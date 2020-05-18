@@ -1,11 +1,6 @@
-import server4
+import interface
 open lean.parser
 open interactive
-/-
-theorem foo : 1=1 := begin
-main_tactic
-end
--/
 
 meta def parse_string (ps : lean.parser_state) (s : string) : tactic pexpr :=
 match (lean.parser.with_input interactive.types.texpr s) ps with
