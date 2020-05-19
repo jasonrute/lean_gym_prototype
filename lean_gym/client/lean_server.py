@@ -1,8 +1,9 @@
 import json
 import subprocess
+import sys
 from datetime import datetime
-from pathlib import Path
 from pprint import pprint
+from typing import List, Optional
 
 from client import dumb_json, api
 
@@ -12,40 +13,55 @@ class LeanServer:
     Open up my special Lean server and communicate with it.
     """
 
-    def __init__(self):
-        lean_file_path = Path(__file__).parent / "../../src/examples/main_entry.lean"
-        lean_path_str = str(lean_file_path.absolute())
-        self.proc = subprocess.Popen(['lean', '--run', lean_path_str],
-                                     universal_newlines=True,
-                                     stdin=subprocess.PIPE,  # pipe STDIN and STDOUT to send and receive messages
-                                     stdout=subprocess.PIPE,
-                                     # stderr=subprocess.PIPE
-                                     )
+    def __init__(self, proc_args: Optional[List[str]]):
+        """
+        Start up connection to Lean.
 
-    # make into a context manager so that it closes lean server automatically
+        :param proc_args: The args for Popen to start the process.  The processes stdin and stdout will be piped.
+        For example, use ["lean", "--run", "path-to-file.lean"] to run an io main in a lean file or
+        ["lean", "path-to-file.lean"] to run another type of entry point.
+        If proc_args is None, then communicate with sys.stdin an sys.stdout.  (This latter case is useful when you
+        want the gym to be "reversable" so that a proof can be submitted to a human user.)
+        """
+        if proc_args:
+            self.proc = subprocess.Popen(
+                proc_args,
+                universal_newlines=True,
+                stdin=subprocess.PIPE,  # pipe STDIN and STDOUT to send and receive messages
+                stdout=subprocess.PIPE
+            )
+            self.outward_comm_stream = self.proc.stdin
+            self.inward_comm_stream = self.proc.stdout
+        else:
+            self.proc = None
+            self.outward_comm_stream = sys.stdout
+            self.inward_comm_stream = sys.stdin
+
+    # make into a context manager so that it closes lean processes automatically
     def __enter__(self):
-        self.proc.__enter__()
+        if self.proc is not None:
+            self.proc.__enter__()
         return self
 
     def __exit__(self, type, value, traceback):
-        self.proc.__exit__(type, value, traceback)
+        if self.proc is not None:
+            self.proc.__exit__(type, value, traceback)
 
     def send_and_receive_dicts(self, d, dumb=False):
         # send
         if dumb:
-            dumb_json.json_write(d, self.proc.stdin)
+            dumb_json.json_write(d, self.outward_comm_stream)
         else:
-            print(json.dumps(d), file=self.proc.stdin, flush=True)
+            print(json.dumps(d), file=self.outward_comm_stream, flush=True)
 
         # recieve
         j = None
         while j is None:
-            raw_output = self.proc.stdout.readline()
+            raw_output = self.inward_comm_stream.readline()
             try:
                 j = json.loads(raw_output)
             except:
-                print("Bad json: >{}<".format(raw_output))
-                raise Exception
+                raise Exception("Bad json: >{}<".format(raw_output))
 
         return j
 

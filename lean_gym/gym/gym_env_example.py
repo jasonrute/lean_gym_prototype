@@ -1,5 +1,6 @@
 import re
-from typing import Optional, Tuple
+from pathlib import Path
+from typing import Optional, Tuple, List
 
 from client.lean_server import LeanServer
 from client import api
@@ -19,14 +20,22 @@ class LeanEnvExample:
     This is an example gym which follows an interface similar
     to open AI's gym.
     """
-    def __init__(self, goal: Optional[str]):
+    def __init__(self, goal: Optional[str], use_in_reverse=False):
         """
         :param goal:  The goal to solve.  Enter as a string of Lean code, e.g. "forall p q : Prop, p -> p \\/ q".
+        :param reversed: This environment can be used in reverse.  The environment will communicate
+        with sys.stdin and sys.stdout, allowing lean to call the agent's python file as a process to provide guidance.
         """
         # TODO: Change so that the goal is Lean code and not an s-expression
 
         # this gym is a wrapper around a custom Lean server process.
-        self.server = LeanServer()
+        if use_in_reverse:
+            self.server = LeanServer(None)
+        else:
+            lean_file_path = Path(__file__).parent / "../../src/examples/main_entry.lean"
+            lean_path_str = str(lean_file_path.absolute())
+            self.server = LeanServer(["lean", "--run", lean_path_str])
+
         self.goal_string = goal  # save to reset space later
         self.info = {}
         self.reset()
@@ -125,6 +134,12 @@ class LeanEnvExample:
     def set_state(self, state: dict) -> dict:
         self.info = state
         return self.info
+
+    def submit_solution(self, actions: List[dict]) -> dict:
+        pass
+
+    def submit_partial_solution(self, actions: List[dict]) -> dict:
+        pass
 
     @property
     def action_space(self):
