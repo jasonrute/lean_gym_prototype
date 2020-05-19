@@ -2,6 +2,12 @@ import interface
 open lean.parser
 open interactive
 
+meta def main_tactic : tactic unit := do
+  ts <- get_state,
+  let init_search_state := search_state.new ts,
+  server_loop.run init_search_state,
+  return ()
+
 meta def parse_string (ps : lean.parser_state) (s : string) : tactic pexpr :=
 match (lean.parser.with_input interactive.types.texpr s) ps with
 | (interaction_monad.result.exception error ref s') := tactic.failed
@@ -23,12 +29,15 @@ meta def parse_for_me_cmd (meta_info : interactive.decl_meta_info) (_ : interact
 do e <- interactive.types.texpr,
    ps <- get_parser_state,
    lean.parser.of_tactic $ do
-     let s := "10 + 10 = 20",
+     let s := "foo + 10 = 20",
      pexp <- parse_string ps s,
      set_new_goal1 pexp,
      tactic.trace_state,
      main_tactic
-
 .
 
-parse_for_me 1 + 1 = 1 + 2.
+--parse_for_me true .  -- will fail since can't access foo
+
+def foo := 1
+
+parse_for_me true . -- will succeed
