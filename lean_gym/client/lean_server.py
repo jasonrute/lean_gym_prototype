@@ -1,6 +1,7 @@
 import json
 import subprocess
 from datetime import datetime
+from pathlib import Path
 from pprint import pprint
 
 from client import dumb_json, api
@@ -12,7 +13,9 @@ class LeanServer:
     """
 
     def __init__(self):
-        self.proc = subprocess.Popen(['lean', '--run', '../src/examples/main_entry.lean'],
+        lean_file_path = Path(__file__).parent / "../../src/examples/main_entry.lean"
+        lean_path_str = str(lean_file_path.absolute())
+        self.proc = subprocess.Popen(['lean', '--run', lean_path_str],
                                      universal_newlines=True,
                                      stdin=subprocess.PIPE,  # pipe STDIN and STDOUT to send and receive messages
                                      stdout=subprocess.PIPE,
@@ -73,7 +76,7 @@ class LeanServer:
 
         return response
 
-    def apply_tactic(self, tactic, debug=False):
+    def apply_tactic(self, tactic: api.LeanTacticApply, debug=False):
         request = api.LeanServerRequestApplyTactic(
             tactic=tactic
         )
@@ -88,7 +91,7 @@ class LeanServer:
 
         return result
 
-    def change_state(self, state_control, debug=False):
+    def change_state(self, state_control: api.LeanStateControl, debug=False):
         request = api.LeanServerRequestChangeState(
             control=state_control
         )
