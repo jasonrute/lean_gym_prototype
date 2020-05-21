@@ -1,7 +1,7 @@
 import collections
 
-from client import api
-from examples.tools import parse_goal_info
+from lean_gym.client import api
+from lean_gym.examples.tools import parse_goal_info
 
 tactics = [
     (api.LeanTacticApply, 1),

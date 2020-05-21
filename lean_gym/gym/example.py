@@ -1,4 +1,4 @@
-from gym.gym_env_example import LeanEnvExample
+from lean_gym.gym.gym_env_example import LeanEnvExample
 
 goal1 = """( expr.pi ( name.mk_string "p" ( name.anonymous ) ) ( binder_info.default ) ( expr.sort ( level.zero ) ) ( expr.pi ( name.mk_string "a" ( name.anonymous ) ) ( binder_info.default ) ( expr.var 0 ) ( expr.var 1 ) ) )"""
 goal2 = """( expr.pi ( name.mk_string "p" ( name.anonymous ) ) ( binder_info.default ) ( expr.sort ( level.zero ) ) ( expr.pi ( name.mk_string "q" ( name.anonymous ) ) ( binder_info.default ) ( expr.sort ( level.zero ) ) ( expr.pi ( name.mk_string "a" ( name.anonymous ) ) ( binder_info.default ) ( expr.var 0 ) ( expr.pi ( name.mk_string "a" ( name.anonymous ) ) ( binder_info.default ) ( expr.var 2 ) ( expr.var 2 ) ) ) ) )"""

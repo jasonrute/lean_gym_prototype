@@ -5,7 +5,7 @@ from datetime import datetime
 from pprint import pprint
 from typing import List, Optional
 
-from client import dumb_json, api
+from lean_gym.client import dumb_json, api
 
 
 class LeanServer:

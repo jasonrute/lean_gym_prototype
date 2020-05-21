@@ -2,8 +2,8 @@ import re
 from pathlib import Path
 from typing import Optional, Tuple, List
 
-from client.lean_server import LeanServer
-from client import api
+from lean_gym.client.lean_server import LeanServer
+from lean_gym.client import api
 
 TACTICS = {
     'apply': (api.LeanTacticApply, 1),
