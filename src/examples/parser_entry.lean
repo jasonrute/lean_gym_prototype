@@ -12,8 +12,10 @@ meta def json_config : json_server lean_server_request lean_server_response := {
 
 @[user_command]
 meta def run_lean_gym_server_with_goal_cmd (meta_info : interactive.decl_meta_info) (_ : interactive.parse (tk "run_lean_gym_server_with_goal")) : lean.parser unit :=
-do goal <- interactive.types.texpr,
-  lean_gym.run_server_from_parser json_config goal
+do 
+  goal <- interactive.types.texpr,
+  lean_gym.run_server_from_parser json_config goal,
+  return ()
 .
 
 run_lean_gym_server_with_goal 1 + 1 = 2 . -- will succeed

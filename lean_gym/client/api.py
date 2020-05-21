@@ -166,6 +166,10 @@ class LeanStateControl:
     def change_top_goal(sexp: str) -> 'ChangeTopGoalLeanStateControl':
         return ChangeTopGoalLeanStateControl(sexp)
 
+    @staticmethod
+    def change_top_goal_pp(sexp: str) -> 'ChangeTopGoalPpLeanStateControl':
+        return ChangeTopGoalPpLeanStateControl(sexp)
+
     def to_dict(self) -> dict:
         """Dictionary which can later be serialized to JSON"""
         pass
@@ -177,6 +181,8 @@ class LeanStateControl:
             return JumpToStateLeanStateControl.from_dict(d)
         if 'change_top_goal' in d:
             return ChangeTopGoalLeanStateControl.from_dict(d)
+        if 'change_top_goal_pp' in d:
+            return ChangeTopGoalPpLeanStateControl.from_dict(d)
 
         raise Exception("Dict not of the correct form: " + str(d))
 
@@ -219,6 +225,24 @@ class ChangeTopGoalLeanStateControl(LeanStateControl):
 
     def __repr__(self):
         return 'ChangeTopGoalLeanStateControl(' + 'sexp = ' + repr(self.sexp) + ')'
+
+
+class ChangeTopGoalPpLeanStateControl(LeanStateControl):
+    def __init__(self, sexp: str):
+        self.sexp = sexp
+        pass
+
+    def to_dict(self) -> dict:
+        """Dictionary which can later be serialized to JSON"""
+        return {'change_top_goal_pp': {'sexp': self.sexp}}
+
+    @staticmethod
+    def from_dict(d: dict) -> 'ChangeTopGoalPpLeanStateControl':
+        """Build ChangeTopGoalPpLeanStateControl from dictionary which was deserialized from JSON"""
+        return ChangeTopGoalPpLeanStateControl(d['change_top_goal_pp']['sexp'])
+
+    def __repr__(self):
+        return 'ChangeTopGoalPpLeanStateControl(' + 'sexp = ' + repr(self.sexp) + ')'
 
 
 class LeanServerRequest:

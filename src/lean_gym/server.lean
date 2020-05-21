@@ -37,17 +37,39 @@ interface_m.run_tactic2 ts0 $ (do
   return ()
 )
 
+meta def mk_new_goal2 (ts0 : tactic_state) (goal : pexpr) : interface_m tactic_state := do
+interface_m.run_tactic2 ts0 $ (do
+  exp <- tactic.to_expr goal,
+  v <- tactic.mk_meta_var exp,
+  tactic.set_goals [v],
+  return ()
+)
+
 meta def change_goal (sexp : string) : interface_m unit := do
   goal_expr <- deserialize_expr sexp,
   ts0 <- interface_m.get_inital_tactic_state,
   ts <- mk_new_goal ts0 goal_expr,
   interface_m.reset_all_tactic_states ts
 
+meta def change_goal_pp (goal : string) : interface_m unit := do
+  config <- interface_m.read_config,
+  match config.ps with
+  | some ps := do
+    pexp <- interface_m.parse_string ps goal,
+    ts0 <- interface_m.get_inital_tactic_state,
+    ts <- mk_new_goal2 ts0 pexp,
+    interface_m.reset_all_tactic_states ts
+  | none := throw $ interface_ex.user_input_exception 
+    "In this configuration, the Lean parser is not available to enter goals as Lean expressions.  Use an s-expression or run in a different way."
+  end
+
 meta def change_state : lean_state_control -> interface_m unit
 | (lean_state_control.jump_to_state state_index) := 
   interface_m.set_tactic_state state_index
 | (lean_state_control.change_top_goal sexp) := 
   change_goal sexp
+| (lean_state_control.change_top_goal_pp goal) :=
+  change_goal_pp goal
 
 meta def state_info_str (st_ix : nat) : tactic string := do
 let s :=  "Proof state:",
@@ -176,7 +198,7 @@ lean.parser.of_tactic $ do
   ts <- get_state,
   return ts
 
-meta def run_server_from_parser (server : json_server lean_server_request lean_server_response) (goal : pexpr) : lean.parser unit := do
+meta def run_server_from_parser (server : json_server lean_server_request lean_server_response) (goal : pexpr) : lean.parser (except interface_ex unit) := do
   ps <- get_parser_state,
   ts <- tactic_state_at_goal goal,
   let config : interface_config := {
@@ -184,8 +206,9 @@ meta def run_server_from_parser (server : json_server lean_server_request lean_s
     ps := ps,
     initial_ts := ts
   },
-  let ts := server_loop.run config,
-  return ()
+  -- it is very important that we do something with `server_loop.run config`
+  -- (like return it) otherwise it won't be executed
+  return $ server_loop.run config
 
 meta def run_server_from_io (server : json_server lean_server_request lean_server_response): io unit := do
   io.run_tactic (run_server_from_tactic server),

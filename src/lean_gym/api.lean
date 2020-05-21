@@ -12,6 +12,7 @@ meta inductive lean_state_control
 /-  -/
 | jump_to_state (state_index : nat)
 | change_top_goal (sexp : string)
+| change_top_goal_pp (sexp : string)
 
 /- Request to the server -/
 meta inductive lean_server_request

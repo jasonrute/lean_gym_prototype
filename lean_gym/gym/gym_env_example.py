@@ -32,9 +32,9 @@ class LeanEnvExample:
         if use_in_reverse:
             self.server = LeanServer(None)
         else:
-            lean_file_path = Path(__file__).parent / "../../src/examples/main_entry.lean"
+            lean_file_path = Path(__file__).parent / "../../src/examples/parser_entry.lean"
             lean_path_str = str(lean_file_path.absolute())
-            self.server = LeanServer(["lean", "--run", lean_path_str])
+            self.server = LeanServer(["lean", lean_path_str])
 
         self.goal_string = goal  # save to reset space later
         self.info = {}
@@ -114,7 +114,7 @@ class LeanEnvExample:
         -------
         observation : the initial observation of the space. (Initial reward is assumed to be 0.)
         """
-        result = self.server.change_state(api.ChangeTopGoalLeanStateControl(self.goal_string))
+        result = self.server.change_state(api.ChangeTopGoalPpLeanStateControl(self.goal_string))
         assert isinstance(result, api.SuccessLeanStateResult)
         goal_info = result.basic_state_information
         self.info = LeanEnvExample._parse_goal_info(goal_info)

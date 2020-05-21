@@ -44,6 +44,7 @@ meta instance lean_state_control_has_to_json : has_to_json lean_state_control :=
 has_to_json.mk $ λ s, match s with
 | (lean_state_control.jump_to_state state_index) := json.jobject [("jump_to_state", json.jobject [("state_index", to_json state_index)])]
 | (lean_state_control.change_top_goal sexp) := json.jobject [("change_top_goal", json.jobject [("sexp", to_json sexp)])]
+| (lean_state_control.change_top_goal_pp sexp) := json.jobject [("change_top_goal_pp", json.jobject [("sexp", to_json sexp)])]
 end
 
 private meta def decode_json_lean_state_control : json → exceptional lean_state_control
@@ -55,6 +56,10 @@ private meta def decode_json_lean_state_control : json → exceptional lean_stat
   (sexp, kvs) <- decoder_get_field_value string "sexp" kvs,
   decoder_check_empty kvs,
   return $ lean_state_control.change_top_goal sexp
+| (json.jobject [("change_top_goal_pp", json.jobject kvs)]) := do
+  (sexp, kvs) <- decoder_get_field_value string "sexp" kvs,
+  decoder_check_empty kvs,
+  return $ lean_state_control.change_top_goal_pp sexp
 | j := exceptional.fail $ "Unexpected form for " ++ "lean_state_control" ++ ", found: " ++ (to_string j)
 
 meta instance lean_state_control_has_from_json : has_from_json lean_state_control := 
