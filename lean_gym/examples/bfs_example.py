@@ -13,7 +13,7 @@ def main():
     with LeanServer(["lean", "--run", lean_path_str]) as lean:
         # not needed.  Just for warmup to test speed
         lean.change_state(
-                api.LeanStateControlChangeTopGoal(
+                api.ChangeTopGoalLeanStateControl(
                     sexp=goal
                 )
             )

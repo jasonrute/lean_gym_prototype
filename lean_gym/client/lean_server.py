@@ -54,19 +54,20 @@ class LeanServer:
         else:
             print(json.dumps(d), file=self.outward_comm_stream, flush=True)
 
-        # recieve
+        # receive
         j = None
         while j is None:
             raw_output = self.inward_comm_stream.readline()
             try:
                 j = json.loads(raw_output)
+            # TODO: Don't use bare except
             except:
                 raise Exception("Bad json: >{}<".format(raw_output))
 
         return j
 
     def send_request_and_receive_response(self, request, debug=False):
-        request_dict = request._to_dict()
+        request_dict = request.to_dict()
 
         # TODO: Use logging instead
         if debug:
@@ -85,39 +86,39 @@ class LeanServer:
             pprint(response_dict)
             print()
 
-        response = api.LeanServerResponse._from_dict(response_dict)
+        response = api.LeanServerResponse.from_dict(response_dict)
 
-        if isinstance(response, api.LeanServerResponseError):
+        if isinstance(response, api.ErrorLeanServerResponse):
             raise Exception(response.msg)
 
         return response
 
-    def apply_tactic(self, tactic: api.LeanTacticApply, debug=False):
-        request = api.LeanServerRequestApplyTactic(
+    def apply_tactic(self, tactic: api.ApplyLeanTactic, debug=False):
+        request = api.ApplyTacticLeanServerRequest(
             tactic=tactic
         )
 
         response = self.send_request_and_receive_response(request, debug=debug)
 
-        assert isinstance(response, api.LeanServerResponseApplyTactic), type(response)
+        assert isinstance(response, api.ApplyTacticLeanServerResponse), type(response)
         result = response.result
 
-        if isinstance(result, api.LeanTacticResultServerError):
+        if isinstance(result, api.ServerErrorLeanTacticResult):
             raise Exception(result.msg)
 
         return result
 
     def change_state(self, state_control: api.LeanStateControl, debug=False):
-        request = api.LeanServerRequestChangeState(
+        request = api.ChangeStateLeanServerRequest(
             control=state_control
         )
 
         response = self.send_request_and_receive_response(request, debug=debug)
 
-        assert isinstance(response, api.LeanServerResponseChangeState), type(response)
+        assert isinstance(response, api.ChangeStateLeanServerResponse), type(response)
         result = response.result
 
-        if isinstance(result, api.LeanStateResultServerError):
+        if isinstance(result, api.ServerErrorLeanStateResult):
             raise Exception(result.msg)
 
         return result

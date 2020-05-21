@@ -6,12 +6,12 @@ from lean_gym.client.lean_server import LeanServer
 from lean_gym.client import api
 
 TACTICS = {
-    'apply': (api.LeanTacticApply, 1),
-    'cases': (api.LeanTacticCases, 1),
-    'intro': (api.LeanTacticIntro, 0),
-    'split': (api.LeanTacticSplit, 0),
-    'left': (api.LeanTacticLeft, 0),
-    'right': (api.LeanTacticRight, 0),
+    'apply': (api.ApplyLeanTactic, 1),
+    'cases': (api.CasesLeanTactic, 1),
+    'intro': (api.IntroLeanTactic, 0),
+    'split': (api.SplitLeanTactic, 0),
+    'left': (api.LeftLeanTactic, 0),
+    'right': (api.RightLeanTactic, 0),
 }
 
 
@@ -89,13 +89,13 @@ class LeanEnvExample:
         tactic = tac(*args)
         result = self.server.apply_tactic(tactic)
 
-        if isinstance(result, api.LeanTacticResultFailure):
+        if isinstance(result, api.FailureLeanTacticResult):
             # tactic failed
             reward = -1
             done = False
             return self.info, reward, done, self.info
 
-        assert isinstance(result, api.LeanTacticResultSuccess)
+        assert isinstance(result, api.SuccessLeanTacticResult)
         goal_info = result.basic_goal_information
         self.info = LeanEnvExample._parse_goal_info(goal_info)
 
@@ -114,8 +114,8 @@ class LeanEnvExample:
         -------
         observation : the initial observation of the space. (Initial reward is assumed to be 0.)
         """
-        result = self.server.change_state(api.LeanStateControlChangeTopGoal(self.goal_string))
-        assert isinstance(result, api.LeanStateResultSuccess)
+        result = self.server.change_state(api.ChangeTopGoalLeanStateControl(self.goal_string))
+        assert isinstance(result, api.SuccessLeanStateResult)
         goal_info = result.basic_state_information
         self.info = LeanEnvExample._parse_goal_info(goal_info)
         assert not self.info['solved']

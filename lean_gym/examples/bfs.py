@@ -4,12 +4,12 @@ from lean_gym.client import api
 from lean_gym.examples.tools import parse_goal_info
 
 tactics = [
-    (api.LeanTacticApply, 1),
-    (api.LeanTacticCases, 1),
-    (api.LeanTacticIntro, 0),
-    (api.LeanTacticSplit, 0),
-    (api.LeanTacticLeft, 0),
-    (api.LeanTacticRight, 0),
+    (api.ApplyLeanTactic, 1),
+    (api.CasesLeanTactic, 1),
+    (api.IntroLeanTactic, 0),
+    (api.SplitLeanTactic, 0),
+    (api.LeftLeanTactic, 0),
+    (api.RightLeanTactic, 0),
 ]
 
 
@@ -20,7 +20,7 @@ class BreathFirstProofSearch:
 
     def search(self, goal_sexp):
         result = self.lean.change_state(
-            api.LeanStateControlChangeTopGoal(
+            api.ChangeTopGoalLeanStateControl(
                 sexp=goal_sexp
             )
         )
@@ -37,10 +37,10 @@ class BreathFirstProofSearch:
         while queue:
             state, tactic, args, proof = queue.popleft()
 
-            self.lean.change_state(api.LeanStateControlJumpToState(state))
+            self.lean.change_state(api.JumpToStateLeanStateControl(state))
             result = self.lean.apply_tactic(tactic(*args))
 
-            if isinstance(result, api.LeanTacticResultFailure):
+            if isinstance(result, api.FailureLeanTacticResult):
                 continue
 
             state_info = parse_goal_info(result.basic_goal_information)
