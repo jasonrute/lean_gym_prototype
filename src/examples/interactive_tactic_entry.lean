@@ -1,4 +1,6 @@
 import interface
+open lean.parser
+open interactive
 
 -- set up server
 meta def server : json_server lean_server_request lean_server_response := {
@@ -8,6 +10,6 @@ meta def server : json_server lean_server_request lean_server_response := {
   put_json := json_server.put_standard_json, -- use standard format  
 }
 
-meta def main : io unit :=
-  run_interface_from_io server
-  
+theorem foo : 1=1 := begin
+run_interface_from_tactic server
+end
