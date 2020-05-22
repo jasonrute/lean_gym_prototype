@@ -2,6 +2,10 @@ class LeanTactic:
     """Tactic grammer"""
 
     @staticmethod
+    def skip() -> 'SkipLeanTactic':
+        return SkipLeanTactic()
+
+    @staticmethod
     def apply(sexp: str) -> 'ApplyLeanTactic':
         return ApplyLeanTactic(sexp)
 
@@ -25,6 +29,10 @@ class LeanTactic:
     def right() -> 'RightLeanTactic':
         return RightLeanTactic()
 
+    @staticmethod
+    def exfalso() -> 'ExfalsoLeanTactic':
+        return ExfalsoLeanTactic()
+
     def to_dict(self) -> dict:
         """Dictionary which can later be serialized to JSON"""
         pass
@@ -32,6 +40,8 @@ class LeanTactic:
     @staticmethod
     def from_dict(d: dict) -> 'LeanTactic':
         """Build LeanTactic from dictionary which was deserialized from JSON"""
+        if 'skip' in d:
+            return SkipLeanTactic.from_dict(d)
         if 'apply' in d:
             return ApplyLeanTactic.from_dict(d)
         if 'cases' in d:
@@ -44,11 +54,30 @@ class LeanTactic:
             return LeftLeanTactic.from_dict(d)
         if 'right' in d:
             return RightLeanTactic.from_dict(d)
+        if 'exfalso' in d:
+            return ExfalsoLeanTactic.from_dict(d)
 
         raise Exception("Dict not of the correct form: " + str(d))
 
     def __repr__(self):
         pass
+
+
+class SkipLeanTactic(LeanTactic):
+    def __init__(self, ):
+        pass
+
+    def to_dict(self) -> dict:
+        """Dictionary which can later be serialized to JSON"""
+        return {'skip': {}}
+
+    @staticmethod
+    def from_dict(d: dict) -> 'SkipLeanTactic':
+        """Build SkipLeanTactic from dictionary which was deserialized from JSON"""
+        return SkipLeanTactic()
+
+    def __repr__(self):
+        return 'SkipLeanTactic(' + ')'
 
 
 class ApplyLeanTactic(LeanTactic):
@@ -153,6 +182,23 @@ class RightLeanTactic(LeanTactic):
 
     def __repr__(self):
         return 'RightLeanTactic(' + ')'
+
+
+class ExfalsoLeanTactic(LeanTactic):
+    def __init__(self, ):
+        pass
+
+    def to_dict(self) -> dict:
+        """Dictionary which can later be serialized to JSON"""
+        return {'exfalso': {}}
+
+    @staticmethod
+    def from_dict(d: dict) -> 'ExfalsoLeanTactic':
+        """Build ExfalsoLeanTactic from dictionary which was deserialized from JSON"""
+        return ExfalsoLeanTactic()
+
+    def __repr__(self):
+        return 'ExfalsoLeanTactic(' + ')'
 
 
 class LeanStateControl:

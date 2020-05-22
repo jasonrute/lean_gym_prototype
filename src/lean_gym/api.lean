@@ -1,11 +1,13 @@
 /- Tactic grammer -/
 meta inductive lean_tactic
+| skip
 | apply (sexp : string)
 | cases (sexp : string)
 | intro
 | split
 | left
 | right
+| exfalso
 
 /- Manually change the state -/
 meta inductive lean_state_control

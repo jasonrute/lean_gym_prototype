@@ -5,15 +5,20 @@ open json
 
 meta instance lean_tactic_has_to_json : has_to_json lean_tactic := 
 has_to_json.mk $ λ s, match s with
+| (lean_tactic.skip ) := json.jobject [("skip", json.jobject [])]
 | (lean_tactic.apply sexp) := json.jobject [("apply", json.jobject [("sexp", to_json sexp)])]
 | (lean_tactic.cases sexp) := json.jobject [("cases", json.jobject [("sexp", to_json sexp)])]
 | (lean_tactic.intro ) := json.jobject [("intro", json.jobject [])]
 | (lean_tactic.split ) := json.jobject [("split", json.jobject [])]
 | (lean_tactic.left ) := json.jobject [("left", json.jobject [])]
 | (lean_tactic.right ) := json.jobject [("right", json.jobject [])]
+| (lean_tactic.exfalso ) := json.jobject [("exfalso", json.jobject [])]
 end
 
 private meta def decode_json_lean_tactic : json → exceptional lean_tactic
+| (json.jobject [("skip", json.jobject kvs)]) := do
+  decoder_check_empty kvs,
+  return $ lean_tactic.skip 
 | (json.jobject [("apply", json.jobject kvs)]) := do
   (sexp, kvs) <- decoder_get_field_value string "sexp" kvs,
   decoder_check_empty kvs,
@@ -34,6 +39,9 @@ private meta def decode_json_lean_tactic : json → exceptional lean_tactic
 | (json.jobject [("right", json.jobject kvs)]) := do
   decoder_check_empty kvs,
   return $ lean_tactic.right 
+| (json.jobject [("exfalso", json.jobject kvs)]) := do
+  decoder_check_empty kvs,
+  return $ lean_tactic.exfalso 
 | j := exceptional.fail $ "Unexpected form for " ++ "lean_tactic" ++ ", found: " ++ (to_string j)
 
 meta instance lean_tactic_has_from_json : has_from_json lean_tactic := 

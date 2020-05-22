@@ -19,6 +19,8 @@ catch (interface_m.run_tactic2 ts t) $ λ e, match e with
 end
 
 meta def apply_tactic_request (ts : tactic_state) : lean_tactic -> interface_m tactic_state
+| (lean_tactic.skip) := do
+  apply_tactic (tactic.interactive.skip)
 | (lean_tactic.apply sexpr) := do
   h <- deserialize_expr sexpr,
   apply_tactic (tactic.interactive.concat_tags (tactic.apply h))
@@ -29,6 +31,7 @@ meta def apply_tactic_request (ts : tactic_state) : lean_tactic -> interface_m t
 | lean_tactic.split := apply_tactic (tactic.interactive.split)
 | lean_tactic.left := apply_tactic (tactic.interactive.left)
 | lean_tactic.right := apply_tactic (tactic.interactive.right)
+| lean_tactic.exfalso := apply_tactic (tactic.interactive.exfalso)
 
 meta def mk_new_goal (ts0 : tactic_state) (goal : expr) : interface_m tactic_state := do
 interface_m.run_tactic2 ts0 $ (do
