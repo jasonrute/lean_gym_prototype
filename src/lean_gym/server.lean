@@ -98,14 +98,14 @@ interface_m.run_tactic1 ts (state_info_str ix)
 
 meta def eval_user_request : lean_server_request → interface_m lean_server_response
 | (lean_server_request.apply_tactic tac) := catch (do
-    ts <- interface_m.get_current_tactic_state,
-    ts <- apply_tactic_request ts tac,
-    ix <- interface_m.register_tactic_state ts,
-    state_info <- get_state_info ts ix,
-    let msg := "Tactic succeeded:" ++ "\n" ++ state_info,
-    let result := lean_tactic_result.success msg,
-    let response := lean_server_response.apply_tactic result,
-    return response
+  ts <- interface_m.get_current_tactic_state,
+  ts <- apply_tactic_request ts tac,
+  ix <- interface_m.register_tactic_state ts,
+  state_info <- get_state_info ts ix,
+  let msg := "Tactic succeeded:" ++ "\n" ++ state_info,
+  let result := lean_tactic_result.success msg,
+  let response := lean_server_response.apply_tactic result,
+  return response
   ) $ λ e, match e with
   | interface_ex.apply_tactic_exception fmt_opt := do
     let msg := match fmt_opt with
@@ -131,14 +131,14 @@ meta def eval_user_request : lean_server_request → interface_m lean_server_res
   | e := throw e
   end
 | (lean_server_request.change_state state_control) := catch (do
-    change_state state_control,
-    ts <- interface_m.get_current_tactic_state,
-    ix <- interface_m.get_current_tactic_state_ix,
-    state_info <- get_state_info ts ix,
-    let msg := "state change succeeded:" ++ "\n" ++ state_info,
-    let result := lean_state_result.success msg,
-    let response := lean_server_response.change_state result,
-    return response
+  change_state state_control,
+  ts <- interface_m.get_current_tactic_state,
+  ix <- interface_m.get_current_tactic_state_ix,
+  state_info <- get_state_info ts ix,
+  let msg := "state change succeeded:" ++ "\n" ++ state_info,
+  let result := lean_state_result.success msg,
+  let response := lean_server_response.change_state result,
+  return response
   ) $ λ e, match e with
   | interface_ex.tactic_exception fmt_opt := do
     let msg := match fmt_opt with
@@ -155,6 +155,7 @@ meta def eval_user_request : lean_server_request → interface_m lean_server_res
     return response
   | e := throw e
   end
+| lean_server_request.exit := return lean_server_response.exiting
 
 meta def server_loop : interface_m unit := do
 response <- catch (do 
@@ -174,7 +175,10 @@ response <- catch (do
   end
 ),
 interface_m.write_io_response response,
-server_loop
+match response with
+| lean_server_response.exiting := return ()
+| e := server_loop
+end
 
 -- commands for running the interface
 -- TODO: maybe it is better not to have the initial tactic state inside the config

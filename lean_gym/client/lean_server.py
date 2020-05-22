@@ -122,3 +122,13 @@ class LeanServer:
             raise Exception(result.msg)
 
         return result
+
+    def exit(self, debug=False):
+        request = api.ExitLeanServerRequest()
+
+        response = self.send_request_and_receive_response(request, debug=debug)
+
+        assert isinstance(response, api.ExitingLeanServerResponse), type(response)
+        result = True
+
+        return result
