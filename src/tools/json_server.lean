@@ -50,6 +50,9 @@ server.put_json server.put_line (to_json response)
 
 meta def get_request {α β : Type} [has_from_json α] [has_to_json β] (server : json_server α β) : io α := do
 j <- server.get_json server.get_line,
+-- uncomment to debug json
+--stderr <- io.stderr,
+--io.fs.put_str_ln stderr (to_string j),
 a <- exceptional_to_io (from_json α j),
 return a
 

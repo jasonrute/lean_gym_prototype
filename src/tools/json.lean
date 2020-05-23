@@ -141,7 +141,7 @@ private meta def get_value_aux (key : string) : (list (string × json)) → exce
     exceptional.success (v, kvs)
   else do
     (v', kvs') <- get_value_aux kvs,
-    return (v', (k, v) :: kvs)
+    return (v', (k, v) :: kvs')
 
 meta def get_value (key : string) : json → exceptional json
 | (json.jobject kvs) := do (v, _) <- get_value_aux key kvs, return v
