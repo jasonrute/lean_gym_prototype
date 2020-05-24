@@ -78,7 +78,7 @@ meta instance lean_server_request_has_to_json : has_to_json lean_server_request 
 has_to_json.mk $ λ s, match s with
 | (lean_server_request.apply_tactic tactic) := json.jobject [("apply_tactic", json.jobject [("tactic", to_json tactic)])]
 | (lean_server_request.change_state control) := json.jobject [("change_state", json.jobject [("control", to_json control)])]
-| (lean_server_request.exit ) := json.jobject [("exit", json.jobject [])]
+| (lean_server_request.exit msg) := json.jobject [("exit", json.jobject [("msg", to_json msg)])]
 end
 
 private meta def decode_json_lean_server_request : json → exceptional lean_server_request
@@ -91,8 +91,9 @@ private meta def decode_json_lean_server_request : json → exceptional lean_ser
   decoder_check_empty kvs,
   return $ lean_server_request.change_state control
 | (json.jobject [("exit", json.jobject kvs)]) := do
+  (msg, kvs) <- decoder_get_field_value string "msg" kvs,
   decoder_check_empty kvs,
-  return $ lean_server_request.exit 
+  return $ lean_server_request.exit msg
 | j := exceptional.fail $ "Unexpected form for " ++ "lean_server_request" ++ ", found: " ++ (to_string j)
 
 meta instance lean_server_request_has_from_json : has_from_json lean_server_request := 
@@ -150,7 +151,7 @@ meta instance lean_server_response_has_to_json : has_to_json lean_server_respons
 has_to_json.mk $ λ s, match s with
 | (lean_server_response.apply_tactic result) := json.jobject [("apply_tactic", json.jobject [("result", to_json result)])]
 | (lean_server_response.change_state result) := json.jobject [("change_state", json.jobject [("result", to_json result)])]
-| (lean_server_response.exiting ) := json.jobject [("exiting", json.jobject [])]
+| (lean_server_response.exit msg) := json.jobject [("exit", json.jobject [("msg", to_json msg)])]
 | (lean_server_response.error msg) := json.jobject [("error", json.jobject [("msg", to_json msg)])]
 end
 
@@ -163,9 +164,10 @@ private meta def decode_json_lean_server_response : json → exceptional lean_se
   (result, kvs) <- decoder_get_field_value lean_state_result "result" kvs,
   decoder_check_empty kvs,
   return $ lean_server_response.change_state result
-| (json.jobject [("exiting", json.jobject kvs)]) := do
+| (json.jobject [("exit", json.jobject kvs)]) := do
+  (msg, kvs) <- decoder_get_field_value string "msg" kvs,
   decoder_check_empty kvs,
-  return $ lean_server_response.exiting 
+  return $ lean_server_response.exit msg
 | (json.jobject [("error", json.jobject kvs)]) := do
   (msg, kvs) <- decoder_get_field_value string "msg" kvs,
   decoder_check_empty kvs,

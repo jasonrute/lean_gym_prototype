@@ -11,27 +11,46 @@ match (expr.deserialize sexpr) with
 | (sum.inr h) := return h
 end
 
-meta def apply_tactic (t : tactic unit): interface_m tactic_state := do
-ts <- interface_m.get_current_tactic_state,
+meta def pp_sexpr (ts : tactic_state) (sexpr : string) : interface_m string := do
+exp <- deserialize_expr sexpr,
+interface_m.run_tactic1 ts (do fmt <- tactic.pp exp, return fmt.to_string)
+
+meta def tactic_str (ts : tactic_state) : lean_tactic -> interface_m string
+| (lean_tactic.skip) := return "skip"
+| (lean_tactic.apply sexpr) := do
+  h_str <- pp_sexpr ts sexpr,
+  return $ "apply " ++ h_str
+| (lean_tactic.cases sexpr) := do
+  h_str <- pp_sexpr ts sexpr,
+  return $ "cases " ++ h_str
+| lean_tactic.intro := return "intro"
+| lean_tactic.split := return "split"
+| lean_tactic.left := return "left"
+| lean_tactic.right := return "right"
+| lean_tactic.exfalso := return "exfalso"
+
+meta def apply_tactic (ts : tactic_state) (t : tactic unit): interface_m tactic_state := do
 catch (interface_m.run_tactic2 ts t) $ λ e, match e with
 | interface_ex.tactic_exception error := throw (interface_ex.apply_tactic_exception error)
 | e := throw e
 end
 
-meta def apply_tactic_request (ts : tactic_state) : lean_tactic -> interface_m tactic_state
+meta def apply_lean_tactic (ts : tactic_state) : lean_tactic -> interface_m tactic_state
 | (lean_tactic.skip) := do
-  apply_tactic (tactic.interactive.skip)
+  apply_tactic ts (tactic.interactive.skip)
 | (lean_tactic.apply sexpr) := do
   h <- deserialize_expr sexpr,
-  apply_tactic (tactic.interactive.concat_tags (tactic.apply h))
+  apply_tactic ts (tactic.interactive.concat_tags (tactic.apply h))
 | (lean_tactic.cases sexpr) := do
   h <- deserialize_expr sexpr,
-  apply_tactic (tactic.interactive.cases_core h [])
-| lean_tactic.intro := apply_tactic (tactic.interactive.propagate_tags (tactic.intro1 >> tactic.skip))
-| lean_tactic.split := apply_tactic (tactic.interactive.split)
-| lean_tactic.left := apply_tactic (tactic.interactive.left)
-| lean_tactic.right := apply_tactic (tactic.interactive.right)
-| lean_tactic.exfalso := apply_tactic (tactic.interactive.exfalso)
+  apply_tactic ts (tactic.interactive.cases_core h [])
+| lean_tactic.intro := apply_tactic ts (tactic.interactive.propagate_tags (tactic.intro1 >> tactic.skip))
+| lean_tactic.split := apply_tactic ts (tactic.interactive.split)
+| lean_tactic.left := apply_tactic ts (tactic.interactive.left)
+| lean_tactic.right := apply_tactic ts (tactic.interactive.right)
+| lean_tactic.exfalso := apply_tactic ts (tactic.interactive.exfalso)
+
+
 
 meta def mk_new_goal (ts0 : tactic_state) (goal : expr) : interface_m tactic_state := do
 interface_m.run_tactic2 ts0 $ (do
@@ -74,7 +93,7 @@ meta def change_state : lean_state_control -> interface_m unit
 | (lean_state_control.change_top_goal_pp goal) :=
   change_goal_pp goal
 
-meta def state_info_str (st_ix : nat) : tactic string := do
+meta def state_info_str (st_ix : nat) (proof_str : string): tactic string := do
 let s :=  "Proof state:",
 st ← tactic.read,
 let fmt := to_fmt st,
@@ -83,6 +102,9 @@ let s := s ++ "\n" ++ (to_string fmt),
 let s := s ++ "\n",
 let s := s ++ "\n" ++ "Current state index:",
 let s := s ++ "\n" ++ (to_string st_ix),
+let s := s ++ "\n",
+let s := s ++ "\n" ++ "Pretty-printed proof:",
+let s := s ++ "\n" ++ proof_str,
 let s := s ++ "\n",
 s1 <- (do 
   let s1 := s ++ "\n" ++ "Local names:",
@@ -94,43 +116,48 @@ s1 <- (do
 return s1
 
 meta def get_state_info (ts : tactic_state) (ix : nat): interface_m string := do
-interface_m.run_tactic1 ts (state_info_str ix)
+proof_str <- interface_m.get_pp_proof ix,
+interface_m.run_tactic1 ts (state_info_str ix proof_str)
 
-meta def eval_user_request : lean_server_request → interface_m lean_server_response
-| (lean_server_request.apply_tactic tac) := catch (do
+meta def handle_apply_tactic_request (tac : lean_tactic) : interface_m lean_server_response := 
+catch (do
   ts <- interface_m.get_current_tactic_state,
-  ts <- apply_tactic_request ts tac,
-  ix <- interface_m.register_tactic_state ts,
+  ix <- interface_m.get_current_tactic_state_ix,
+  tac_str <- tactic_str ts tac,
+  ts <- apply_lean_tactic ts tac,
+  ix <- interface_m.register_tactic_state ts ix tac_str,
   state_info <- get_state_info ts ix,
   let msg := "Tactic succeeded:" ++ "\n" ++ state_info,
   let result := lean_tactic_result.success msg,
   let response := lean_server_response.apply_tactic result,
   return response
-  ) $ λ e, match e with
-  | interface_ex.apply_tactic_exception fmt_opt := do
-    let msg := match fmt_opt with
-    | some fmt := "Tactic failed: " ++ (to_string (fmt ()))
-    | none := "Tactic failed: <no message>"
-    end,
-    let result := lean_tactic_result.failure msg,
-    let response := lean_server_response.apply_tactic result,
-    return response
-  | interface_ex.tactic_exception fmt_opt := do
-    let msg := match fmt_opt with
-    | some fmt := "Unable to apply tactic: " ++ (to_string (fmt ()))
-    | none := "Unable to apply tactic: <no message>"
-    end,
-    let result := lean_tactic_result.server_error msg,
-    let response := lean_server_response.apply_tactic result,
-    return response
-  | interface_ex.user_input_exception msg := do
-    let msg := "Unable to apply tactic: " ++ msg,
-    let result := lean_tactic_result.server_error msg,
-    let response := lean_server_response.apply_tactic result,
-    return response
-  | e := throw e
-  end
-| (lean_server_request.change_state state_control) := catch (do
+) $ λ e, match e with
+| interface_ex.apply_tactic_exception fmt_opt := do
+  let msg := match fmt_opt with
+  | some fmt := "Tactic failed: " ++ (to_string (fmt ()))
+  | none := "Tactic failed: <no message>"
+  end,
+  let result := lean_tactic_result.failure msg,
+  let response := lean_server_response.apply_tactic result,
+  return response
+| interface_ex.tactic_exception fmt_opt := do
+  let msg := match fmt_opt with
+  | some fmt := "Unable to apply tactic: " ++ (to_string (fmt ()))
+  | none := "Unable to apply tactic: <no message>"
+  end,
+  let result := lean_tactic_result.server_error msg,
+  let response := lean_server_response.apply_tactic result,
+  return response
+| interface_ex.user_input_exception msg := do
+  let msg := "Unable to apply tactic: " ++ msg,
+  let result := lean_tactic_result.server_error msg,
+  let response := lean_server_response.apply_tactic result,
+  return response
+| e := throw e
+end
+
+meta def handle_change_state_request (state_control : lean_state_control) : interface_m lean_server_response :=
+catch (do
   change_state state_control,
   ts <- interface_m.get_current_tactic_state,
   ix <- interface_m.get_current_tactic_state_ix,
@@ -139,25 +166,29 @@ meta def eval_user_request : lean_server_request → interface_m lean_server_res
   let result := lean_state_result.success msg,
   let response := lean_server_response.change_state result,
   return response
-  ) $ λ e, match e with
-  | interface_ex.tactic_exception fmt_opt := do
-    let msg := match fmt_opt with
-    | some fmt := "State change failed: " ++ (to_string (fmt ()))
-    | none := "State change failed: <no message>"
-    end,
-    let result := lean_state_result.server_error msg,
-    let response := lean_server_response.change_state result,
-    return response
-  | interface_ex.user_input_exception msg := do
-    let msg := "State change failed: " ++ msg,
-    let result := lean_state_result.server_error msg,
-    let response := lean_server_response.change_state result,
-    return response
-  | e := throw e
-  end
-| lean_server_request.exit := return lean_server_response.exiting
+) $ λ e, match e with
+| interface_ex.tactic_exception fmt_opt := do
+  let msg := match fmt_opt with
+  | some fmt := "State change failed: " ++ (to_string (fmt ()))
+  | none := "State change failed: <no message>"
+  end,
+  let result := lean_state_result.server_error msg,
+  let response := lean_server_response.change_state result,
+  return response
+| interface_ex.user_input_exception msg := do
+  let msg := "State change failed: " ++ msg,
+  let result := lean_state_result.server_error msg,
+  let response := lean_server_response.change_state result,
+  return response
+| e := throw e
+end
 
-meta def server_loop : interface_m unit := do
+meta def eval_user_request : lean_server_request → interface_m lean_server_response
+| (lean_server_request.apply_tactic tac) := handle_apply_tactic_request tac
+| (lean_server_request.change_state state_control) := handle_change_state_request state_control
+| (lean_server_request.exit msg) := return (lean_server_response.exit msg)
+
+meta def server_loop : interface_m (option string) := do
 response <- catch (do 
   -- TODO: Might want to split into errors that are parsing errors (json type things) and ones that are bugs on my end
   request <- interface_m.read_io_request,
@@ -171,19 +202,34 @@ response <- catch (do
     end,
     let response := lean_server_response.error msg,
     return response
+  | interface_ex.parser_exception fmt_opt := do
+    let msg := match fmt_opt with
+    | some fmt := "Unexpected error processing request: " ++ (to_string (fmt ()))
+    | none := "Unexpected error processing request: <no message>"
+    end,
+    let response := lean_server_response.error msg,
+    return response
+  | interface_ex.io_exception fmt_opt := do
+    let msg := match fmt_opt with
+    | some fmt := "Unexpected error processing request: " ++ (to_string (fmt ()))
+    | none := "Unexpected error processing request: <no message>"
+    end,
+    let response := lean_server_response.error msg,
+    return response
   | e := throw e 
   end
 ),
 interface_m.write_io_response response,
 match response with
-| lean_server_response.exiting := return ()
+| lean_server_response.exit msg := do
+  return msg
 | e := server_loop
 end
 
 -- commands for running the interface
 -- TODO: maybe it is better not to have the initial tactic state inside the config
 --       so that the config can be made ahead of time
-meta def run_server_from_tactic (server : json_server lean_server_request lean_server_response) : tactic (except interface_ex unit) := do
+meta def run_server_from_tactic (server : json_server lean_server_request lean_server_response) : tactic (except interface_ex (option string)) := do
   ts <- get_state,
   let config : interface_config := {
     server := server,
@@ -205,7 +251,7 @@ lean.parser.of_tactic $ do
   ts <- get_state,
   return ts
 
-meta def run_server_from_parser (server : json_server lean_server_request lean_server_response) (goal : pexpr) : lean.parser (except interface_ex unit) := do
+meta def run_server_from_parser (server : json_server lean_server_request lean_server_response) (goal : pexpr) : lean.parser (except interface_ex (option string)) := do
   ps <- get_parser_state,
   ts <- tactic_state_at_goal goal,
   let config : interface_config := {

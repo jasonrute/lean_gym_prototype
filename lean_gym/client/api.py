@@ -303,8 +303,8 @@ class LeanServerRequest:
         return ChangeStateLeanServerRequest(control)
 
     @staticmethod
-    def exit() -> 'ExitLeanServerRequest':
-        return ExitLeanServerRequest()
+    def exit(msg: str) -> 'ExitLeanServerRequest':
+        return ExitLeanServerRequest(msg)
 
     def to_dict(self) -> dict:
         """Dictionary which can later be serialized to JSON"""
@@ -363,20 +363,21 @@ class ChangeStateLeanServerRequest(LeanServerRequest):
 
 
 class ExitLeanServerRequest(LeanServerRequest):
-    def __init__(self, ):
+    def __init__(self, msg: str):
+        self.msg = msg
         pass
 
     def to_dict(self) -> dict:
         """Dictionary which can later be serialized to JSON"""
-        return {'exit': {}}
+        return {'exit': {'msg': self.msg}}
 
     @staticmethod
     def from_dict(d: dict) -> 'ExitLeanServerRequest':
         """Build ExitLeanServerRequest from dictionary which was deserialized from JSON"""
-        return ExitLeanServerRequest()
+        return ExitLeanServerRequest(d['exit']['msg'])
 
     def __repr__(self):
-        return 'ExitLeanServerRequest(' + ')'
+        return 'ExitLeanServerRequest(' + 'msg = ' + repr(self.msg) + ')'
 
 
 class LeanTacticResult:
@@ -542,8 +543,8 @@ class LeanServerResponse:
         return ChangeStateLeanServerResponse(result)
 
     @staticmethod
-    def exiting() -> 'ExitingLeanServerResponse':
-        return ExitingLeanServerResponse()
+    def exit(msg: str) -> 'ExitLeanServerResponse':
+        return ExitLeanServerResponse(msg)
 
     @staticmethod
     def error(msg: str) -> 'ErrorLeanServerResponse':
@@ -560,8 +561,8 @@ class LeanServerResponse:
             return ApplyTacticLeanServerResponse.from_dict(d)
         if 'change_state' in d:
             return ChangeStateLeanServerResponse.from_dict(d)
-        if 'exiting' in d:
-            return ExitingLeanServerResponse.from_dict(d)
+        if 'exit' in d:
+            return ExitLeanServerResponse.from_dict(d)
         if 'error' in d:
             return ErrorLeanServerResponse.from_dict(d)
 
@@ -607,21 +608,22 @@ class ChangeStateLeanServerResponse(LeanServerResponse):
         return 'ChangeStateLeanServerResponse(' + 'result = ' + repr(self.result) + ')'
 
 
-class ExitingLeanServerResponse(LeanServerResponse):
-    def __init__(self, ):
+class ExitLeanServerResponse(LeanServerResponse):
+    def __init__(self, msg: str):
+        self.msg = msg
         pass
 
     def to_dict(self) -> dict:
         """Dictionary which can later be serialized to JSON"""
-        return {'exiting': {}}
+        return {'exit': {'msg': self.msg}}
 
     @staticmethod
-    def from_dict(d: dict) -> 'ExitingLeanServerResponse':
-        """Build ExitingLeanServerResponse from dictionary which was deserialized from JSON"""
-        return ExitingLeanServerResponse()
+    def from_dict(d: dict) -> 'ExitLeanServerResponse':
+        """Build ExitLeanServerResponse from dictionary which was deserialized from JSON"""
+        return ExitLeanServerResponse(d['exit']['msg'])
 
     def __repr__(self):
-        return 'ExitingLeanServerResponse(' + ')'
+        return 'ExitLeanServerResponse(' + 'msg = ' + repr(self.msg) + ')'
 
 
 class ErrorLeanServerResponse(LeanServerResponse):

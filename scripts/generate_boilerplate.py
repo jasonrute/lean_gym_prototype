@@ -99,7 +99,12 @@ case_block2 = """
 arg_block = """
   ({argname}, kvs) <- decoder_get_field_value {argtype} "{argname}" kvs,"""
 
+arg_block_rec = """
+  ({argname}, kvs) <- @decoder_get_field_value {argtype} ⟨decode_json_{argtype}⟩ "{argname}" kvs,"""
+
 arg_block2 = """("{argname}", to_json {argname})"""
+
+arg_block2_rec = """("{argname}", @to_json {argtype} {argtype}_has_to_json {argname})"""
 
 
 def make_lean_boilerplate(inductives):
@@ -112,9 +117,14 @@ def make_lean_boilerplate(inductives):
             arg_list = []
             arg_blocks2 = []
             for argname, argtype in c['args']:
-                arg_blocks.append(arg_block.format(argname=argname, argtype=argtype))
                 arg_list.append(argname)
-                arg_blocks2.append(arg_block2.format(argname=argname))
+                if argtype == i['name']:
+                    # recursive type
+                    arg_blocks.append(arg_block_rec.format(argname=argname, argtype=argtype))
+                    arg_blocks2.append(arg_block2_rec.format(argname=argname, argtype=argtype))
+                else:
+                    arg_blocks.append(arg_block.format(argname=argname, argtype=argtype))
+                    arg_blocks2.append(arg_block2.format(argname=argname))
             arg_blocks_str = "".join(arg_blocks)
             arg_list_str = " ".join(arg_list)
             arg_blocks2_str = ", ".join(arg_blocks2)

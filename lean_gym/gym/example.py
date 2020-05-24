@@ -1,5 +1,6 @@
 from lean_gym.gym.gym_env_example import LeanEnvExample
 
+
 def main():
     env = LeanEnvExample("∀ p q : Prop, q → p → q")
 
@@ -24,6 +25,8 @@ def main():
 
     env.step({'tactic': 'apply', 'local_id': 'a'})
     env.render()
+
+    env.close("Try this: " + env.info['proof'])
 
 
 if __name__ == '__main__':

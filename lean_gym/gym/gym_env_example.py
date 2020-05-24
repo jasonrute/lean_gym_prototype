@@ -1,6 +1,6 @@
 import re
 from pathlib import Path
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple
 
 from lean_gym.client.lean_server import LeanServer
 from lean_gym.client import api
@@ -23,7 +23,7 @@ class LeanEnvExample:
     def __init__(self, goal: Optional[str], use_in_reverse=False):
         """
         :param goal:  The goal to solve.  Enter as a string of Lean code, e.g. "forall p q : Prop, p -> p \\/ q".
-        :param reversed: This environment can be used in reverse.  The environment will communicate
+        :param use_in_reverse: This environment can be used in reverse.  The environment will communicate
         with sys.stdin and sys.stdout, allowing lean to call the agent's python file as a process to provide guidance.
         """
         # TODO: Change so that the goal is Lean code and not an s-expression
@@ -42,6 +42,8 @@ class LeanEnvExample:
 
     @staticmethod
     def _parse_goal_info(goal_info: str) -> dict:
+        proof = goal_info.split("Pretty-printed proof:\n")[1].split("\n")[0].strip()
+
         state_ix = int(goal_info.split("Current state index:\n")[1].split("\n")[0])
 
         goal_state_str = goal_info.split("Proof state:\n")[1].split("Current state index:")[0].strip()
@@ -62,7 +64,26 @@ class LeanEnvExample:
         else:
             local_vars = None
 
-        return {'state_ix': state_ix, 'locals': local_vars, 'solved': solved, 'pp_state': goal_state_str, 'raw': goal_info}
+        return {
+            'state_ix': state_ix,
+            'locals': local_vars,
+            'solved': solved,
+            'pp_state': goal_state_str,
+            'proof': proof,
+            'raw': goal_info
+        }
+
+    def _tactic(self, action: dict) -> api.LeanTactic:
+        """
+        Turn action into a tactic
+        """
+        tac, arg_cnt = TACTICS[action['tactic']]
+        if arg_cnt == 1:
+            args = [self.info['locals'][action['local_id']]]
+        else:
+            args = []
+
+        return tac(*args)
 
     def step(self, action: dict) -> Tuple[dict, float, bool, dict]:
         """
@@ -80,13 +101,7 @@ class LeanEnvExample:
         info : a dictionary containing other diagnostic information from the previous action
         """
 
-        tac, arg_cnt = TACTICS[action['tactic']]
-        if arg_cnt == 1:
-            args = [self.info['locals'][action['local_id']]]
-        else:
-            args = []
-
-        tactic = tac(*args)
+        tactic = self._tactic(action)
         result = self.server.apply_tactic(tactic)
 
         if isinstance(result, api.FailureLeanTacticResult):
@@ -123,6 +138,8 @@ class LeanEnvExample:
         return self.info
 
     def render(self):
+        print()
+        print(self.info['proof'])
         print("===========================")
         print(self.info['pp_state'])
         print("===========================")
@@ -135,11 +152,9 @@ class LeanEnvExample:
         self.info = state
         return self.info
 
-    def submit_solution(self, actions: List[dict]) -> dict:
-        pass
-
-    def submit_partial_solution(self, actions: List[dict]) -> dict:
-        pass
+    def close(self, msg: str) -> None:
+        self.server.exit(msg)
+        # TODO: I also need to shut down the process
 
     @property
     def action_space(self):

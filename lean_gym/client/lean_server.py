@@ -93,7 +93,7 @@ class LeanServer:
 
         return response
 
-    def apply_tactic(self, tactic: api.ApplyLeanTactic, debug=False):
+    def apply_tactic(self, tactic: api.LeanTactic, debug=False):
         request = api.ApplyTacticLeanServerRequest(
             tactic=tactic
         )
@@ -123,12 +123,12 @@ class LeanServer:
 
         return result
 
-    def exit(self, debug=False):
-        request = api.ExitLeanServerRequest()
+    def exit(self, msg: str, debug=False) -> str:
+        request = api.ExitLeanServerRequest(msg)
 
         response = self.send_request_and_receive_response(request, debug=debug)
 
-        assert isinstance(response, api.ExitingLeanServerResponse), type(response)
-        result = True
+        assert isinstance(response, api.ExitLeanServerResponse), type(response)
+        result = response.msg
 
         return result

@@ -21,7 +21,7 @@ meta inductive lean_server_request
 /-  -/
 | apply_tactic (tactic : lean_tactic)
 | change_state (control : lean_state_control)
-| exit
+| exit (msg : string)
 
 meta inductive lean_tactic_result
 | success (basic_goal_information : string)
@@ -35,5 +35,5 @@ meta inductive lean_state_result
 meta inductive lean_server_response
 | apply_tactic (result : lean_tactic_result)
 | change_state (result : lean_state_result)
-| exiting
+| exit (msg : string)
 | error (msg : string)

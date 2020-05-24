@@ -28,32 +28,42 @@ goals via lean syntax instead of more combersome methods. -/
 /- The initial tactic state, used to seed the search_state. -/
 (initial_ts : tactic_state)
 
+
+meta inductive tactic_state_node
+-- root node of the search tree
+| root (ts : tactic_state)
+-- node with a parent (immediately previous node state)  
+-- pp_tactic_cmd is a pretty printed tactic command
+| child (ts : tactic_state) (parent_ix : nat) (pp_tactic_cmd : string)
+
 /- A persistant search state data structure which is used for keeping
   track of all the tactic states visited.  (When this monad calls a tactic
   it will do so explicitly by specifying the tactic_state to use.) -/
 meta structure interface_state :=
-(tactic_states : list tactic_state)  -- if not fast enough, use a better lookup data structure
+(tactic_states : list tactic_state_node)  -- if not fast enough, use a better lookup data structure
 (current_ts_ix : nat) -- TODO: Remove after new API
 
-meta def interface_state.initialize (ts : tactic_state) : interface_state := 
-{ tactic_states := [ts], current_ts_ix := 0 }
+meta def interface_state.initialize (ts : tactic_state) : interface_state := { 
+  tactic_states := [tactic_state_node.root ts], 
+  current_ts_ix := 0
+}
 
 meta def interface_state.size (state : interface_state) : nat := 
 state.tactic_states.length
 
-meta def interface_state.get (ix : nat) (state : interface_state) : option tactic_state :=
+meta def interface_state.get_node (ix : nat) (state : interface_state) : option tactic_state_node :=
 if ix < state.tactic_states.length then 
   state.tactic_states.nth (state.tactic_states.length - ix - 1) 
 else 
   none
 
-meta def interface_state.put (state : interface_state) (ts : tactic_state) : interface_state × nat :=
-({ tactic_states := ts :: state.tactic_states, current_ts_ix := state.size }, state.size)
+meta def interface_state.put_node (state : interface_state) (ts : tactic_state_node) : interface_state × nat :=
+({ tactic_states := ts :: state.tactic_states, current_ts_ix := state.size, ..state }, state.size)
 
 -- TODO: Remove after new API
 meta def interface_state.set_current (state : interface_state) (ix : nat) : option interface_state :=
 if ix < state.tactic_states.length then 
-  some { tactic_states := state.tactic_states, current_ts_ix := ix }
+  some { current_ts_ix := ix, ..state }
 else 
   none
 
@@ -140,9 +150,10 @@ namespace interface_m
 
 meta def get_tactic_state (ix : nat): interface_m tactic_state := do
 state <- get_state,
-match state.get(ix) with
-| some ts := return ts
-| none := throw $ interface_ex.user_input_exception $ "No state index " ++ repr(ix)
+match state.get_node(ix) with
+| some (tactic_state_node.root ts) := return ts
+| some (tactic_state_node.child ts _ _) := return ts
+| none := throw $ interface_ex.user_input_exception $ "No state with index " ++ repr(ix)
 end
 
 /- This is tactic state from the config used to initialize the monad -/
@@ -153,8 +164,9 @@ return config.initial_ts
 -- TODO: Remove after new API
 meta def get_current_tactic_state : interface_m tactic_state := do
 state <- get_state,
-match state.get(state.current_ts_ix) with
-| some ts := return ts
+match state.get_node(state.current_ts_ix) with
+| some (tactic_state_node.root ts) := return ts
+| some (tactic_state_node.child ts _ _) := return ts
 | none := throw $ interface_ex.unexpected_error $ "BUG: Current state index " ++ repr(state.current_ts_ix) ++ " has not corresponding state."
 end
 
@@ -163,7 +175,7 @@ meta def set_tactic_state (ix : nat): interface_m unit := do
 state <- get_state,
 match state.set_current ix with
 | some s := put_state s
-| none := throw $ interface_ex.user_input_exception $ "No state index " ++ repr(ix)
+| none := throw $ interface_ex.user_input_exception $ "No state with index " ++ repr(ix)
 end
 
 -- TODO: Remove after new API
@@ -171,14 +183,37 @@ meta def get_current_tactic_state_ix : interface_m nat := do
 state <- get_state,
 return state.current_ts_ix
 
-meta def register_tactic_state (ts : tactic_state) : interface_m nat := do
+meta def register_tactic_state (ts : tactic_state) (parent_ix : nat) (pp_tactic_cmd : string) : interface_m nat := do
 state <- get_state,
-let (state, ix) := state.put ts,
+let (state, ix) := state.put_node (tactic_state_node.child ts parent_ix pp_tactic_cmd),
 put_state state,
 return ix
 
 meta def reset_all_tactic_states (ts0 : tactic_state) : interface_m unit := do
 put_state (interface_state.initialize ts0)
+
+meta def get_pp_proof_step (ix : nat) : interface_m (option string) := do
+state <- get_state,
+match state.get_node(ix) with
+| some (tactic_state_node.root _) := return none
+| some (tactic_state_node.child _ _ pf) := return (some pf)
+| none := throw $ interface_ex.user_input_exception $ "No state with index " ++ repr(ix)
+end
+
+meta def get_rev_pp_proof : nat -> interface_m (list string)
+| ix := do
+  state <- get_state,
+  match state.get_node(ix) with
+  | some (tactic_state_node.root _) := return []
+  | some (tactic_state_node.child _ parent_ix pf) := do
+    pf_tail <- get_rev_pp_proof parent_ix,
+    return (pf :: pf_tail)
+  | none := throw $ interface_ex.user_input_exception $ "No state with index " ++ repr(ix)
+  end
+
+meta def get_pp_proof (ix : nat) : interface_m string := do
+rev_proof_lst <- get_rev_pp_proof ix,
+return (string.intercalate ", " (rev_proof_lst.reverse))
 
 meta def read_io_request : interface_m lean_server_request := do
 config <- read_config,
