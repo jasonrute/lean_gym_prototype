@@ -15,7 +15,7 @@ do
   goal <- interactive.types.texpr,
   result <- lean_gym.run_server_from_parser json_config goal,
   match result with
-  | except.ok (some p) := lean.parser.of_tactic (tactic.trace p)
+  | except.ok (some p) := return ()
   | _ := return ()
   end,
   return ()

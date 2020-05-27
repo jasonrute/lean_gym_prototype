@@ -6,7 +6,14 @@ def main():
 
     env.reset()
     env.render()
+
+    env.step({'tactic': 'intro'})
+    env.render()
+
     s = env.get_state()
+
+    env.step({'tactic': 'intro'})
+    env.render()
 
     env.step({'tactic': 'intro'})
     env.render()

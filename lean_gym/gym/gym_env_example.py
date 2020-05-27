@@ -26,7 +26,6 @@ class LeanEnvExample:
         :param use_in_reverse: This environment can be used in reverse.  The environment will communicate
         with sys.stdin and sys.stdout, allowing lean to call the agent's python file as a process to provide guidance.
         """
-        # TODO: Change so that the goal is Lean code and not an s-expression
 
         # this gym is a wrapper around a custom Lean server process.
         if use_in_reverse:
@@ -155,8 +154,13 @@ class LeanEnvExample:
         return self.info
 
     def set_state(self, state: dict) -> dict:
-        # TODO: This is wrong!
-        raise NotImplementedError
+        ix = state['state_ix']
+        change = api.JumpToStateLeanStateControl(ix)
+        result = self.server.change_state(change)
+        assert isinstance(result, api.SuccessLeanStateResult)
+        goal_info = result.basic_state_information
+        self.info = LeanEnvExample._parse_goal_info(goal_info)
+        return self.info
 
     def close(self, msg: str) -> None:
         self.server.exit(msg)
