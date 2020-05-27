@@ -106,6 +106,7 @@ meta def load_json_after_first_line (readline : io string) : string → io json
   else if first = "<NULL>" then
     load_null readline
   else
+  -- TODO: Better error messages here and elsewhere
     io.fail "Expecting <ARRAY> | <OBJECT> | <STRING> | <INT> | <FLOAT> | <BOOL> | <NULL>"
 
 meta def load_json (readline : io string) : io json := do

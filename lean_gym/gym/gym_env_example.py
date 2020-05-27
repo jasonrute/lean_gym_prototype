@@ -38,6 +38,7 @@ class LeanEnvExample:
 
         self.goal_string = goal  # save to reset space later
         self.info = {}
+
         self.reset()
 
     @staticmethod
@@ -122,14 +123,19 @@ class LeanEnvExample:
             reward = 0
         return self.info, reward, done, self.info
 
-    def reset(self):
+    def reset(self) -> dict:
         """
         Resets the state of the environment, returning an initial observation.
         Outputs
         -------
         observation : the initial observation of the space. (Initial reward is assumed to be 0.)
         """
-        result = self.server.change_state(api.ChangeTopGoalPpLeanStateControl(self.goal_string))
+        if self.goal_string is None:
+            change = api.JumpToStateLeanStateControl(state_index=0)
+        else:
+            change = api.ChangeTopGoalPpLeanStateControl(self.goal_string)
+
+        result = self.server.change_state(change)
         assert isinstance(result, api.SuccessLeanStateResult)
         goal_info = result.basic_state_information
         self.info = LeanEnvExample._parse_goal_info(goal_info)
@@ -149,8 +155,8 @@ class LeanEnvExample:
         return self.info
 
     def set_state(self, state: dict) -> dict:
-        self.info = state
-        return self.info
+        # TODO: This is wrong!
+        raise NotImplementedError
 
     def close(self, msg: str) -> None:
         self.server.exit(msg)

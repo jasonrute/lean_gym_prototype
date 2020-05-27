@@ -101,20 +101,8 @@ match run_string Json s with
 | sum.inr j := exceptional.success j
 end
 
-/-
-meta def get_right {α β : Type} (s: α ⊕ β) : β :=
-match s with
-| (sum.inl a) := sorry
-| (sum.inr b) := b
+meta def json.of_char_buffer (cb : char_buffer) : exceptional json := 
+match run Json cb with
+| sum.inl msg := exceptional.fail msg
+| sum.inr j := exceptional.success j
 end
-
-#eval to_string $ get_right $ run_string Json $ "true"
-#eval to_string $ get_right $ run_string Json $ "false"
-#eval to_string $ get_right $ run_string Json $ "0"
-#eval to_string $ get_right $ run_string Json $ "1234124"
-#eval to_string $ get_right $ run_string Json $ "-1231"
-#eval to_string $ get_right $ run_string Json $ repr "abc"
-#eval to_string $ get_right $ run_string Json $ "[0,1, [] ]"
-#eval to_string $ get_right $ run_string Json $ "[0, true, -1, false, null, [] ]"
-#eval to_string $ get_right $ run_string Json $ "{\"a\":0, \"v\" : true, \"b\": -1, \" a\\\\ \": false, \"a\":null, \"a\":[] }"
--/
