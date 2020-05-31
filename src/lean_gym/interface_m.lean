@@ -41,11 +41,9 @@ meta inductive tactic_state_node
   it will do so explicitly by specifying the tactic_state to use.) -/
 meta structure interface_state :=
 (tactic_states : list tactic_state_node)  -- if not fast enough, use a better lookup data structure
-(current_ts_ix : nat) -- TODO: Remove after new API
 
 meta def interface_state.initialize (ts : tactic_state) : interface_state := { 
   tactic_states := [tactic_state_node.root ts], 
-  current_ts_ix := 0
 }
 
 meta def interface_state.size (state : interface_state) : nat := 
@@ -58,14 +56,7 @@ else
   none
 
 meta def interface_state.put_node (state : interface_state) (ts : tactic_state_node) : interface_state × nat :=
-({ tactic_states := ts :: state.tactic_states, current_ts_ix := state.size, ..state }, state.size)
-
--- TODO: Remove after new API
-meta def interface_state.set_current (state : interface_state) (ix : nat) : option interface_state :=
-if ix < state.tactic_states.length then 
-  some { current_ts_ix := ix, ..state }
-else 
-  none
+({ tactic_states := ts :: state.tactic_states, ..state }, state.size)
 
 /- Many types of exceptions indicating various types of failures, which can be 
 handled differently. -/
@@ -73,14 +64,27 @@ meta inductive interface_ex
 | tactic_exception (error : option (unit → format))
 | parser_exception (error : option (unit → format))
 | io_exception (error : option (unit → format))
-| apply_tactic_exception (error : option (unit → format))
+| execute_tactic_exception (error : option (unit → format))
 | user_input_exception (msg : string)
-| unexpected_error (msg : string)
-| other -- TODO: This is a placeholder.  Don't use
--- TODO: Add more as needed.
+| generic_exception (msg : string)
 
+meta def interface_ex.fmt_to_string : option (unit → format) → string
+| (some fmt) := to_string (fmt ())
+| none := "<no message>"
 
-
+meta def interface_ex.to_string : interface_ex → string
+| (interface_ex.tactic_exception fmt) := 
+  "Tactic Monad Exception:\n" ++ interface_ex.fmt_to_string fmt
+| (interface_ex.parser_exception fmt) := 
+  "Parser Monad Exception:\n" ++ interface_ex.fmt_to_string fmt
+| (interface_ex.io_exception fmt) := 
+  "IO Monad Exception:\n" ++ interface_ex.fmt_to_string fmt
+| (interface_ex.execute_tactic_exception fmt) := 
+  "Tactic Failed:\n" ++ interface_ex.fmt_to_string fmt
+| (interface_ex.user_input_exception msg) := 
+  "Input Exception:\n" ++ msg
+| (interface_ex.generic_exception msg) := 
+  "Exception:\n" ++ msg
 -- need to put the except inside the state_t for the desired backtracking properties
 @[derive [monad]]
 meta def interface_m (α : Type) : Type := reader_t interface_config (state_t interface_state (except interface_ex)) α 
@@ -157,31 +161,9 @@ match state.get_node(ix) with
 end
 
 /- This is tactic state from the config used to initialize the monad -/
-meta def get_inital_tactic_state : interface_m tactic_state := do
+meta def get_initial_tactic_state : interface_m tactic_state := do
 config <- read_config,
 return config.initial_ts
-
--- TODO: Remove after new API
-meta def get_current_tactic_state : interface_m tactic_state := do
-state <- get_state,
-match state.get_node(state.current_ts_ix) with
-| some (tactic_state_node.root ts) := return ts
-| some (tactic_state_node.child ts _ _) := return ts
-| none := throw $ interface_ex.unexpected_error $ "BUG: Current state index " ++ repr(state.current_ts_ix) ++ " has not corresponding state."
-end
-
--- TODO: Remove after new API
-meta def set_tactic_state (ix : nat): interface_m unit := do
-state <- get_state,
-match state.set_current ix with
-| some s := put_state s
-| none := throw $ interface_ex.user_input_exception $ "No state with index " ++ repr(ix)
-end
-
--- TODO: Remove after new API
-meta def get_current_tactic_state_ix : interface_m nat := do
-state <- get_state,
-return state.current_ts_ix
 
 meta def register_tactic_state (ts : tactic_state) (parent_ix : nat) (pp_tactic_cmd : string) : interface_m nat := do
 state <- get_state,
@@ -189,15 +171,16 @@ let (state, ix) := state.put_node (tactic_state_node.child ts parent_ix pp_tacti
 put_state state,
 return ix
 
-meta def reset_all_tactic_states (ts0 : tactic_state) : interface_m unit := do
-put_state (interface_state.initialize ts0)
+meta def reset_all_tactic_states (ts0 : tactic_state) : interface_m nat := do
+put_state (interface_state.initialize ts0),
+return 0  -- index of the only tactic state
 
 meta def get_pp_proof_step (ix : nat) : interface_m (option string) := do
 state <- get_state,
 match state.get_node(ix) with
 | some (tactic_state_node.root _) := return none
 | some (tactic_state_node.child _ _ pf) := return (some pf)
-| none := throw $ interface_ex.user_input_exception $ "No state with index " ++ repr(ix)
+| none := throw $ interface_ex.generic_exception $ "BUG: state with index " ++ repr(ix)
 end
 
 meta def get_rev_pp_proof : nat -> interface_m (list string)
@@ -208,12 +191,27 @@ meta def get_rev_pp_proof : nat -> interface_m (list string)
   | some (tactic_state_node.child _ parent_ix pf) := do
     pf_tail <- get_rev_pp_proof parent_ix,
     return (pf :: pf_tail)
-  | none := throw $ interface_ex.user_input_exception $ "No state with index " ++ repr(ix)
+  | none := throw $ interface_ex.generic_exception $ "BUG: state with index " ++ repr(ix)
   end
 
 meta def get_pp_proof (ix : nat) : interface_m string := do
 rev_proof_lst <- get_rev_pp_proof ix,
 return (string.intercalate ", " (rev_proof_lst.reverse))
+
+meta def get_rev_proof_path : nat -> interface_m (list nat)
+| ix := do
+  state <- get_state,
+  match state.get_node(ix) with
+  | some (tactic_state_node.root _) := return [ix]
+  | some (tactic_state_node.child _ parent_ix _) := do
+    pf_tail <- get_rev_proof_path parent_ix,
+    return (ix :: pf_tail)
+  | none := throw $ interface_ex.user_input_exception $ "No state with index " ++ repr(ix)
+  end
+
+meta def get_proof_path (ix : nat) : interface_m (list nat) := do
+rev_proof_lst <- get_rev_proof_path ix,
+return rev_proof_lst.reverse
 
 meta def read_io_request : interface_m lean_server_request := do
 config <- read_config,
