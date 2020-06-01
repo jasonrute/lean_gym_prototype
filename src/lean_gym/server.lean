@@ -110,35 +110,33 @@ do
   let s3 := join "\n\n" local_cxt_strs,
   return $ s1 ++ s2 ++ s3
 
-meta def state_report' : tactic string :=
-do 
- gs ← tactic.get_goals,
- -- loop over all goals (has effect of resetting the goal each time)
- let gs_len := list.length gs,
- goal_strings ← gs.mmap goal_to_string,
- tactic.set_goals gs,  -- set goals back
- let s := "Goals: " ++ (to_string gs_len) ++ "\n\n" ++ (join "\n\n" goal_strings),
- return s
- 
-meta def trace_goal_state : tactic unit :=
-do 
- s ← state_report',
- tactic.trace s,
- return ()
+meta def pp_state (pp_all : bool) : tactic string := do 
+  -- set the pretty printer settings
+  -- must do before retrieving the state since they 
+  -- change the way that the state prints itself!
+  opt ← tactic.get_options,
+  tactic.set_options (opt.set_bool `pp.all pp_all),
+  -- read state and format it
+  state <- tactic.read,
+  fmt <- tactic.pp state,
+  -- set pp settings back to normal
+  tactic.set_options (opt.set_bool `pp.all ff),
+  return $ to_string fmt
 
-
-meta def pretty_print (pp_all : bool) {α : Type} [has_to_format α] (a : α): tactic string := do 
+meta def pp_expr (pp_all : bool) (exp : expr): tactic string := do 
   -- set the pretty printer settings
   opt ← tactic.get_options,
   tactic.set_options (opt.set_bool `pp.all pp_all),
-  let fmt := to_fmt a,
-  fmt <- tactic.pp fmt,
+  -- format exp
+  fmt <- tactic.pp exp,
+  -- set pp settings back to normal
+  tactic.set_options (opt.set_bool `pp.all ff),
   return $ to_string fmt
   
 meta def local_info_tac (cfg : local_info_config) (local_var : expr) : tactic local_report := do
   -- local variable name
   local_var_name <- if cfg.local_var_name then 
-    do pp_str <- pretty_print ff local_var, return (some pp_str)
+    do pp_str <- pp_expr ff local_var, return (some pp_str)
   else
     return none,
 
@@ -153,13 +151,13 @@ meta def local_info_tac (cfg : local_info_config) (local_var : expr) : tactic lo
 
   -- local variable type pp
   local_type_pp <- if cfg.local_type_pp then 
-    do pp_str <- pretty_print ff local_type, return (some pp_str)
+    do pp_str <- pp_expr ff local_type, return (some pp_str)
   else
     return none,
   
   -- local variable type pp_all
   local_type_pp_all <- if cfg.local_type_pp then 
-    do pp_str <- pretty_print ff local_type, return (some pp_str)
+    do pp_str <- pp_expr tt local_type, return (some pp_str)
   else
     return none,
 
@@ -182,22 +180,24 @@ meta def local_info_tac (cfg : local_info_config) (local_var : expr) : tactic lo
 meta def goal_info_tac (cfg : goal_info_config) (goal : expr) : tactic goal_report := do
   -- set goal and get target
   tactic.set_goals [goal],
-  target ← tactic.target,
-
+  target <- tactic.target,
+  
   -- pretty printed target
-  target_pp <- if cfg.target_pp then 
-    do pp_str <- pretty_print ff target, return (some pp_str)
+  target_pp <- if cfg.target_pp then do 
+    pp_str <- pp_expr ff target, 
+    return (some pp_str)
   else
     return none,
 
   -- pretty printed target with pp_all
-  target_pp_all <- if cfg.target_pp_all then 
-    do pp_str <- pretty_print tt target, return (some pp_str)
+  target_pp_all <- if cfg.target_pp_all then do 
+    pp_str <- pp_expr tt target, 
+    return (some pp_str)
   else
     return none,
 
   -- target as s-expression
-  let target_sexp := if cfg.target_sexp then 
+  let target_sexp := if cfg.target_sexp then do
     some (expr.representation.form_of_expr target)
   else
     none,
@@ -214,24 +214,24 @@ meta def goal_info_tac (cfg : goal_info_config) (goal : expr) : tactic goal_repo
   return $ { goal_report . 
     target_hash := if cfg.target_hash then some target.hash else none,
     target_pp := target_pp,
-    target_pp_all := target_pp,
+    target_pp_all := target_pp_all,
     target_sexp := target_sexp,
     local_cnt := if cfg.local_cnt then some local_cxt.length else none,
     locals := local_reports
   }
 
-meta def state_info_tac (st_ix : nat) (proof_path : option (list nat)) (proof_str : option string) (cfg : state_info_config) : tactic state_report := do  
+meta def state_info_tac (cfg : state_info_config) : tactic state_report := do  
   state <- tactic.read,
   
   -- pretty printed state
   state_pp <- if cfg.state_pp then 
-    do pp_str <- pretty_print ff state, return (some pp_str)
+    do pp_str <- pp_state ff, return (some pp_str)
   else
     return none,
 
   -- pretty printed state with pp_all
   state_pp_all <- if cfg.state_pp then 
-    do pp_str <- pretty_print tt state, return (some pp_str)
+    do pp_str <- pp_state tt, return (some pp_str)
   else
     return none,
 
@@ -246,8 +246,8 @@ meta def state_info_tac (st_ix : nat) (proof_path : option (list nat)) (proof_st
 
   return $ { state_report .
     is_solved := goals.empty,
-    proof_path_ixs := proof_path,
-    proof_string := proof_str,
+    proof_path_ixs := none, -- filled in later
+    proof_string := none, -- filled in later
     state_pp := state_pp,
     state_pp_all := state_pp_all,
     goal_cnt := if cfg.goal_cnt then some goals.length else none,
@@ -255,17 +255,24 @@ meta def state_info_tac (st_ix : nat) (proof_path : option (list nat)) (proof_st
   }
 
 meta def get_state_info (ts : tactic_state) (ix : nat) (cfg : state_info_config) : interface_m state_report := do
--- get proof information which is stored in the interface_m state
-proof_path <- if cfg.proof_path_ixs then do
-  proof <- interface_m.get_proof_path ix,
-  return (some proof)
-else return none,
-proof_str <- if cfg.proof_string then do
-  proof <- interface_m.get_pp_proof ix,
-  return (some proof)
-else return none,
--- get the rest of the information by running a tactic on the tactic state
-interface_m.run_tactic1 ts (state_info_tac ix proof_path proof_str cfg)
+  -- retrieve information from tactic state 
+  report <- interface_m.run_tactic1 ts (state_info_tac cfg),
+
+  -- get proof information which is stored in the interface_m state
+  proof_path_ixs <- if cfg.proof_path_ixs then do
+    proof <- interface_m.get_proof_path ix,
+    return (some proof)
+  else return none,
+  proof_string <- if cfg.proof_string then do
+    proof <- interface_m.get_pp_proof ix,
+    return (some proof)
+  else return none,
+
+  return { 
+    proof_path_ixs := proof_path_ixs, 
+    proof_string := proof_string, 
+    ..report }
+
 
 
 meta def handle_execute_tactic (ix : nat) (focus : tactic_focus) (tac : lean_tactic) (cfg : state_info_config) : interface_m lean_server_response :=
