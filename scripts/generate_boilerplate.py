@@ -2,79 +2,282 @@ import re
 import sys
 
 
-def extract_inductives_from_lean_file(lean_file):
+def extract_inductives_and_structures_from_lean_file(lean_file):
     with open(lean_file) as f:
-        inductives = []
+        inductives_and_structures = []
         open_comment_lines = []
         comment = ""
+        current_inductive = None
+        current_structure = None  # includes structures and cases
 
         for line in f:
-            print(line)
+            # handle doc strings.  All docstrings are assumed to be of the form /- ... -/ (possibly over multiple lines)
+            # A structure/inductive, a case of an inductive, or a structure field can all have doc strings.
 
+            # at the end of a doc string
             if open_comment_lines:
-                # in the middle of a comment
                 m = re.search(r'\s*(.*)-/\s*$', line)
                 if m:
-                    print("Match:", m.group(1))
-                    # finished comment
                     open_comment_lines.append(m.group(1).strip())
                     comment = " ".join(open_comment_lines).strip()
                     open_comment_lines = []
-                    print("comment_complete:", comment)
                     continue
 
                 open_comment_lines.append(line.strip())
                 continue
 
+            # blank line
             if line.strip() == "":
                 continue
 
+            # one-line doc string
             m = re.search(r'^\s*/-(.*)-/\s*$', line)
             if m:
-                # single line comment
-                print("Match: ", m.group(1))
                 comment = m.group(1).strip()
-                print("comment_complete:", comment)
                 continue
 
+            # start of multi-line doc string
             m = re.search(r'^\s*/-(.*)\s*$', line)
             if m:
-                # start of multiline comment
-                print("Match:", m.group(1))
                 open_comment_lines.append(m.group(1).strip())
                 continue
 
+            # start of inductive
             m = re.search(r'^\s*(?:meta\s*)?inductive\s*(\w+)\s*$', line)
             if m:
-                # start of inductive
-                print("Match:", m.group(1))
-                current_inductive = {'name': m.group(1), 'doc_string': comment, 'cases': []}
-                inductives.append(current_inductive)
+                current_inductive = {'kind': 'induct', 'name': m.group(1), 'docstring': comment, 'cases': []}
+                inductives_and_structures.append(current_inductive)
                 comment = ""
                 continue
 
-            # matches up to 10 arguments
+            # inductive case with up to 10 parameters, all of the form (name : type)
             m = re.search(
                 r'^\s*\|\s*(\w+)(?:\s*\(\s*(\w+)\s*:\s*([^:]*)\s*\))?(?:\s*\(\s*(\w+)\s*:\s*([^:]*)\s*\))?(?:\s*\(\s*(\w+)\s*:\s*([^:]*)\s*\))?(?:\s*\(\s*(\w+)\s*:\s*([^:]*)\s*\))?(?:\s*\(\s*(\w+)\s*:\s*([^:]*)\s*\))?(?:\s*\(\s*(\w+)\s*:\s*([^:]*)\s*\))?(?:\s*\(\s*(\w+)\s*:\s*([^:]*)\s*\))?(?:\s*\(\s*(\w+)\s*:\s*([^:]*)\s*\))?(?:\s*\(\s*(\w+)\s*:\s*([^:]*)\s*\))?(?:\s*\(\s*(\w+)\s*:\s*([^:]*)\s*\))?\s*:?.*\s*',
                 line)
             if m:
-                # start of case
-                print("Match:", m.group(1), m.group(2), m.group(3))
                 args = []
                 for i in range(10):
                     if m.group(2 * i + 2) is not None:
-                        args.append((m.group(2 * i + 2, 2 * i + 3)))
-                current_inductive['cases'].append({'name': m.group(1), 'doc_string': comment, 'args': args})
+                        args.append({'kind': 'arg', 'name': m.group(2 * i + 2), 'type': m.group(2 * i + 3), 'docstring': ""})
+                current_structure = {'kind': 'case', 'name': m.group(1), 'docstring': comment, 'args': args}
+                current_inductive['cases'].append(current_structure)
+                comment = ""
+                continue
+
+            # start of structure with each field on its own line
+            m = re.search(r'^\s*(?:meta\s*)?structure\s*(\w+)\s*:=\s*$', line)
+            if m:
+                current_structure = {'kind': 'struct', 'name': m.group(1), 'docstring': comment, 'args': []}
+                inductives_and_structures.append(current_structure)
+                comment = ""
+                continue
+
+            # structure field on its own line
+            m = re.search(r'^\s*(?:\s*\(\s*(\w+)\s*:\s*([^:]*)\s*\))\s*$', line)
+            if m:
+                arg = {'kind': 'arg', 'name': m.group(1), 'type': m.group(2), 'docstring': comment}
+                current_structure['args'].append(arg)
                 comment = ""
                 continue
 
             else:
                 raise Exception("Unmatched line: ", line)
 
-    return inductives
+    return inductives_and_structures
 
 
-# lean boilerplate
+class ListBuilder:
+    def __init__(self, sep, item_builder, rec_sub_builders=None):
+        self.sep = sep
+        self.item_builder = item_builder
+        self.rec_sub_builders = rec_sub_builders
+
+    def build(self, object_list, **kwargs):
+        kwargs2 = kwargs.copy()
+        if self.rec_sub_builders is not None:
+            if '_sub_builders' in kwargs2:
+                kwargs2['_sub_builders'].update(self.rec_sub_builders)
+            else:
+                kwargs2['_sub_builders'] = self.rec_sub_builders
+        return self.sep.join(self.item_builder.build(o, **kwargs2) for o in object_list)
+
+
+class ConditionalBuilder:
+    def __init__(self, builders):
+        self.builders = builders
+
+    def build(self, item, **kwargs):
+        for builder in self.builders:
+            s = builder.build(item, **kwargs)
+            if s is not None:
+                return s
+
+        raise ValueError("No conditions satsified.")
+
+
+class FunctionBuilder:
+    def __init__(self, f):
+        self.f = f
+
+    def build(self, item, **kwargs):
+        return self.f(item)
+
+
+class TemplateBuilder:
+    def __init__(self, template, sub_builders=None, cond=None):
+        self.cond = cond
+        self.template = template
+        self.sub_builders = sub_builders if sub_builders is not None else {}
+
+    def build_code_parts(self, kwargs2):
+        if '_sub_builders' in kwargs2:
+            for k, builder in kwargs2['_sub_builders'].items():
+                key = k.split("__")[0]
+                if key in kwargs2:
+                    item = kwargs2[key]
+                    kwargs2[k] = builder.build(item, **kwargs2)
+        for k, builder in self.sub_builders.items():
+            item = kwargs2[k.split("__")[0]]
+            kwargs2[k] = builder.build(item, **kwargs2)
+
+    def build(self, object_dict, **kwargs):
+        kwargs2 = kwargs.copy()
+        kind = object_dict['kind']
+        kwargs2['kind'] = kind
+        for k, v in object_dict.items():
+            if k == "kind":
+                pass
+            else:
+                kwargs2[kind + "_" + k] = v
+
+        # check condition
+        if self.cond is not None and not self.cond(kwargs2):
+            return None
+
+        self.build_code_parts(kwargs2)
+
+        return self.template.format(**kwargs2)
+
+
+# TODO: Add has_repr instance?  (Although, could use JSON)
+lean_builder = ListBuilder(
+    sep='\n\n',
+    item_builder=ConditionalBuilder([
+        TemplateBuilder(
+            cond=(lambda d: d['kind'] == "induct"),
+            template=
+            'meta instance {induct_name}_has_to_json : has_to_json {induct_name} :=\n'
+            'has_to_json.mk $ λ s, match s with\n'
+            '{induct_cases__block1}\n'
+            'end\n'
+            '\n'
+            'private meta def decode_json_{induct_name} : json → exceptional {induct_name}\n'
+            '{induct_cases__block2}\n'
+            '| j := exceptional.fail $ "Unexpected form for " ++ "{induct_name}" ++ ", found: " ++ (to_string j)\n'
+            '\n'
+            'meta instance {induct_name}_has_from_json : has_from_json {induct_name} :=\n'
+            '⟨decode_json_{induct_name}⟩\n',
+            sub_builders={
+                'induct_cases__block1': ListBuilder(
+                    sep='\n',
+                    item_builder=TemplateBuilder(
+                        template=
+                        '| ({induct_name}.{case_name} {case_args__list}): = json.jobject [("{case_name}", json.jobject [{case_args__kvs}])]',
+                        sub_builders={
+                            'case_args__list': ListBuilder(sep=" ", item_builder=TemplateBuilder(template='{arg_name}')),
+                            'case_args__kvs': ListBuilder(
+                                sep=", ",
+                                item_builder=ConditionalBuilder([
+                                    TemplateBuilder(
+                                        cond=lambda d: d['induct_name'] == d['arg_type'],
+                                        template='("{arg_name}", @to_json {arg_type} {arg_type}_has_to_json {arg_name})'
+                                    ),
+                                    TemplateBuilder(
+                                        template='("{arg_name}", to_json {arg_name})'
+                                    )
+                                ])
+                            ),
+                        }
+                    )
+                ),
+                'induct_cases__block2': ListBuilder(
+                    sep = "\n",
+                    item_builder=TemplateBuilder(
+                        template=
+                        '| (json.jobject [("{case_name}", json.jobject kvs)]) := do\n'
+                        '{case_args__extractors}\n'
+                        '  decoder_check_empty kvs,\n'
+                        '  return $ {induct_name}.{case_name} {case_args__list}',
+                        sub_builders={
+                            'case_args__list': ListBuilder(sep=" ", item_builder=TemplateBuilder(template='{arg_name}')),
+                            'case_args__extractors': ListBuilder(
+                                sep="\n",
+                                item_builder=ConditionalBuilder([
+                                    TemplateBuilder(
+                                        cond=lambda d: d['induct_name'] == d['arg_type'],
+                                        template='  ({arg_name}, kvs) <- @decoder_get_field_value {arg_type} ⟨decode_json_{arg_type}⟩ "{arg_name}" kvs,'
+                                    ),
+                                    TemplateBuilder(
+                                        template='  ({arg_name}, kvs) <- decoder_get_field_value {arg_type} "{arg_name}" kvs,'
+                                    )
+                                ])
+                            )
+                        }
+                    )
+                )
+            }
+        ),
+        TemplateBuilder(
+            cond=(lambda d: d['kind'] == "struct"),
+            template=
+            'meta instance {struct_name}_has_to_json : has_to_json {struct_name} :=\n'
+            'has_to_json.mk $ λ s, match s with\n'
+            '| ⟨{struct_args__list1}⟩ := json.jobject [{struct_args__kvs}]\n'
+            'end\n'
+            '\n'
+            'private meta def decode_json_{struct_name} : json → exceptional {struct_name}\n'
+            '| (json.jobject kvs) := do\n'
+            '{struct_args__extractors}\n'
+            '  decoder_check_empty kvs,\n'
+            '  return $ {struct_name}.mk {struct_args__list2}\n'
+            '| j := exceptional.fail $ "Unexpected form for " ++ "{struct_name}" ++ ", found: " ++ (to_string j)\n'
+            '\n'
+            'meta instance {struct_name}_has_from_json : has_from_json {struct_name} :=\n'
+            '⟨decode_json_{struct_name}⟩\n',
+            sub_builders={
+                'struct_args__list1': ListBuilder(sep=", ", item_builder=TemplateBuilder(template='{arg_name}')),
+                'struct_args__list2': ListBuilder(sep=" ", item_builder=TemplateBuilder(template='{arg_name}')),
+                'struct_args__kvs': ListBuilder(
+                    sep=", ",
+                    item_builder=ConditionalBuilder([
+                        TemplateBuilder(
+                            cond=lambda d: d['struct_name'] == d['arg_type'],
+                            template='("{arg_name}", @to_json {arg_type} {arg_type}_has_to_json {arg_name})'
+                        ),
+                        TemplateBuilder(
+                            template='("{arg_name}", to_json {arg_name})'
+                        )
+                    ])
+                ),
+                'struct_args__extractors': ListBuilder(
+                    sep="\n",
+                    item_builder=ConditionalBuilder([
+                        TemplateBuilder(
+                            cond=lambda d: d['struct_name'] == d['arg_type'],
+                            template='  ({arg_name}, kvs) <- @decoder_get_field_value {arg_type} ⟨decode_json_{arg_type}⟩ "{arg_name}" kvs,'
+                        ),
+                        TemplateBuilder(
+                            template='  ({arg_name}, kvs) <- decoder_get_field_value {arg_type} "{arg_name}" kvs,'
+                        )
+                    ])
+                )
+            }
+        )
+    ])
+)
+
+
+# lean templates
 
 inductive_block = """
 meta instance {name}_has_to_json : has_to_json {name} := 
@@ -142,6 +345,262 @@ def make_lean_boilerplate(inductives):
 
 
 # python boilerplate
+def capcase(snake_case_var):
+    return ''.join(i.capitalize() for i in snake_case_var.split('_'))
+
+
+def pytype(leantype):
+    if leantype in ["int", "nat"]:
+        return "int"
+    if leantype == "bool":
+        return "bool"
+    if leantype == "string":
+        return "str"
+    if " " in leantype:
+        type1, type2 = leantype.split(" ", 1)
+        type2 = type2.strip()
+        if type2.startswith("(") and type2.endswith(")"):
+            type2 = type2[1:-1]
+        return cap_case(type1) + "[" + pytype(type2) + "]"
+    return cap_case(leantype)
+
+
+def pyclass(leantype):
+    if leantype in ["nat", "int", "bool", "string"]:
+        return None
+    if " " in leantype:
+        type1, type2 = leantype.split(" ", 1)
+        return cap_case(type1)
+    return cap_case(leantype)
+
+
+cap_case_builder = FunctionBuilder(lambda s: capcase(s))
+class_docstring_builder = FunctionBuilder(lambda docstring: '\n    """' + docstring + '"""' if docstring else '')
+pytype_builder = FunctionBuilder(lambda leantype: pytype(leantype))
+pyclass_builder = FunctionBuilder(lambda leantype: pyclass(leantype))
+python_builder = ListBuilder(
+    sep='\n\n\n',
+    rec_sub_builders={
+        'induct_name__caps': cap_case_builder,
+        'induct_docstring__python': class_docstring_builder,
+        'struct_name__caps': cap_case_builder,
+        'struct_docstring__python': class_docstring_builder,
+        'case_name__caps': cap_case_builder,
+        'case_docstring__python': class_docstring_builder,
+        'arg_type__pytype': pytype_builder,
+        'arg_type__pyclass': pyclass_builder,
+    },
+    item_builder=ConditionalBuilder([
+        TemplateBuilder(
+            cond=(lambda d: d['kind'] == "induct"),
+            template=
+            'class {induct_name__caps}:{induct_docstring__python}\n'
+            '{induct_cases__blocks1}\n'
+            '\n'
+            '    def to_dict(self) -> dict:\n'
+            '        """Dictionary which can later be serialized to JSON"""\n'
+            '        pass\n'
+            '\n'
+            '    @staticmethod\n'
+            '    def from_dict(d: dict) -> "{induct_name__caps}":\n'
+            '        """Build {induct_name__caps} from dictionary which was deserialized from JSON"""\n'
+            '{induct_cases__blocks2}\n'
+            '        raise Exception("Dict not of the correct form: " + str(d))\n'
+            '\n'
+            '    def __repr__(self):\n'
+            '        pass\n'
+            '\n'
+            '\n'
+            '{induct_cases__classes}',
+            sub_builders={
+                'induct_cases__blocks1': ListBuilder(
+                    sep="\n\n",
+                    item_builder=TemplateBuilder(
+                        template=
+                        '    @staticmethod\n'
+                        '    def {case_name}({case_args__list1}) -> "{case_name__caps}{induct_name__caps}":\n'
+                        '        return {case_name__caps}{induct_name__caps}({case_args__list2})',
+                        sub_builders={
+                            'case_args__list1': ListBuilder(
+                                sep=", ",
+                                item_builder=TemplateBuilder(
+                                    template="{arg_name}: {arg_type__pytype}"
+                                ),
+                            ),
+                            'case_args__list2': ListBuilder(
+                                sep=", ",
+                                item_builder=TemplateBuilder(template="{arg_name}")
+                            ),
+                        }
+                    )
+                ),
+                'induct_cases__blocks2': ListBuilder(
+                    sep="\n",
+                    item_builder=TemplateBuilder(
+                        template=
+                        '        if "{case_name}" in d:\n'
+                        '            return {case_name__caps}{induct_name__caps}.from_dict(d)'
+                    )
+                ),
+                'induct_cases__classes': ListBuilder(
+                    sep="\n\n\n",
+                    item_builder=TemplateBuilder(
+                        template=
+                        'class {case_name__caps}{induct_name__caps}({induct_name__caps}):{case_docstring__python}\n'
+                        '    def __init__(self, {case_args__list1}):{case_args__blocks1}\n'
+                        '        pass\n'
+                        '\n'
+                        '    def to_dict(self) -> dict:\n'
+                        '        """Dictionary which can later be serialized to JSON"""\n'
+                        '        return {{"{case_name}": {{{case_args__blocks2}}}}}\n'
+                        '\n'
+                        '    @staticmethod\n'
+                        '    def from_dict(d: dict) -> "{case_name__caps}{induct_name__caps}":\n'
+                        '        """Build {case_name__caps}{induct_name__caps} from dictionary which was deserialized from JSON"""\n'
+                        '        return {case_name__caps}{induct_name__caps}({case_args__blocks3})\n'
+                        '\n'
+                        '    def __repr__(self):\n'
+                        '        return "{case_name__caps}{induct_name__caps}(" + {case_args__blocks4}")"',
+                        sub_builders={
+                            'case_args__list1': ListBuilder(
+                                sep=", ",
+                                item_builder=TemplateBuilder(
+                                    template="{arg_name}: {arg_type__pytype}"
+                                ),
+                            ),
+                            'case_args__blocks1': ListBuilder(
+                                sep="",
+                                item_builder=ConditionalBuilder([
+                                    TemplateBuilder(
+                                        cond=(lambda d: d['arg_type'] == 'nat'),
+                                        template =
+                                        '\n'
+                                        '        self.{arg_name} = {arg_name}\n'
+                                        '        assert {arg_name} >= 0'
+                                    ),
+                                    TemplateBuilder(
+                                        template =
+                                        '\n'
+                                        '        self.{arg_name} = {arg_name}'
+                                    )
+                                ])
+                            ),
+                            'case_args__blocks2': ListBuilder(
+                                sep=', ',
+                                item_builder=ConditionalBuilder([
+                                    TemplateBuilder(
+                                        cond=(lambda d: d['arg_type'] in ['nat', 'int', 'string', 'bool']),
+                                        template='"{arg_name}": self.{arg_name}'
+                                    ),
+                                    # TODO: Handle list case if needed?  Complicated because of polymorphism.
+                                    TemplateBuilder(
+                                        template='"{arg_name}": self.{arg_name}.to_dict()'
+                                    )
+                                ])
+                            ),
+                            'case_args__blocks3': ListBuilder(
+                                sep=', ',
+                                item_builder=ConditionalBuilder([
+                                    TemplateBuilder(
+                                        cond=(lambda d: d['arg_type'] in ['nat', 'int', 'string', 'bool']),
+                                        template='d["{case_name}"]["{arg_name}"]'
+                                    ),
+                                    # TODO: Handle list case if needed?  Complicated because of polymorphism.
+                                    TemplateBuilder(
+                                        template='{arg_type__pyclass}.from_dict(d["{case_name}"]["{arg_name}"])'
+                                    )
+                                ])
+                            ),
+                            'case_args__blocks4': ListBuilder(
+                                sep='", " + ',
+                                item_builder=TemplateBuilder(
+                                    template='"{arg_name} = " + repr(self.{arg_name}) + '
+                                )
+                            ),
+                        }
+                    )
+                ),
+
+            }
+        ),
+        TemplateBuilder(
+            cond=(lambda d: d['kind'] == "struct"),
+                template=
+                'class {struct_name__caps}:{struct_docstring__python}\n'
+                '    def __init__(self, {struct_args__list1}):{struct_args__blocks1}\n'
+                '        pass\n'
+                '\n'
+                '    def to_dict(self) -> dict:\n'
+                '        """Dictionary which can later be serialized to JSON"""\n'
+                '        return {{"{struct_name}": {{{struct_args__blocks2}}}}}\n'
+                '\n'
+                '    @staticmethod\n'
+                '    def from_dict(d: dict) -> "{struct_name__caps}":\n'
+                '        """Build {struct_name__caps} from dictionary which was deserialized from JSON"""\n'
+                '        return {struct_name__caps}({struct_args__blocks3})\n'
+                '\n'
+                '    def __repr__(self):\n'
+                '        return "{struct_name__caps}(" + {struct_args__blocks4}")"',
+                sub_builders={
+                    'struct_args__list1': ListBuilder(
+                        sep=", ",
+                        item_builder=TemplateBuilder(
+                            template="{arg_name}: {arg_type__pytype}"
+                        ),
+                    ),
+                    'struct_args__blocks1': ListBuilder(
+                        sep="",
+                        item_builder=ConditionalBuilder([
+                            TemplateBuilder(
+                                cond=(lambda d: d['arg_type'] == 'nat'),
+                                template =
+                                '\n'
+                                '        self.{arg_name} = {arg_name}\n'
+                                '        assert {arg_name} >= 0'
+                            ),
+                            TemplateBuilder(
+                                template =
+                                '\n'
+                                '        self.{arg_name} = {arg_name}'
+                            )
+                        ])
+                    ),
+                    'struct_args__blocks2': ListBuilder(
+                        sep=', ',
+                        item_builder=ConditionalBuilder([
+                            TemplateBuilder(
+                                cond=(lambda d: d['arg_type'] in ['nat', 'int', 'string', 'bool']),
+                                template='"{arg_name}": self.{arg_name}'
+                            ),
+                            # TODO: Handle list case if needed?  Complicated because of polymorphism.
+                            TemplateBuilder(
+                                template='"{arg_name}": self.{arg_name}.to_dict()'
+                            )
+                        ])
+                    ),
+                    'struct_args__blocks3': ListBuilder(
+                        sep=', ',
+                        item_builder=ConditionalBuilder([
+                            TemplateBuilder(
+                                cond=(lambda d: d['arg_type'] in ['nat', 'int', 'string', 'bool']),
+                                template='d["{struct_name}"]["{arg_name}"]'
+                            ),
+                            # TODO: Handle list case if needed?  Complicated because of polymorphism.
+                            TemplateBuilder(
+                                template='{arg_type__pyclass}.from_dict(d["{struct_name}"]["{arg_name}"])'
+                            )
+                        ])
+                    ),
+                    'struct_args__blocks4': ListBuilder(
+                        sep='", " + ',
+                        item_builder=TemplateBuilder(
+                            template='"{arg_name} = " + repr(self.{arg_name}) + '
+                        )
+                    ),
+                }
+            )
+    ])
+)
 
 python_inductive_block = '''
 class {capname}:{docstring}{caseblocks1}
@@ -304,13 +763,26 @@ def make_python_boilerplate(inductives):
 def main():
     from pprint import pprint
     lean_file = sys.argv[1]
-    inductives = extract_inductives_from_lean_file(lean_file)
+    inductives = extract_inductives_and_structures_from_lean_file(lean_file)
 
-    pprint(inductives)
+    #pprint(inductives)
 
+    #print()
+    #print()
+    #print("=== Lean Code =====================")
+    #print(lean_builder.build(inductives), flush=True)
+    #print("===================================")
+
+    #print()
+    #print()
+    #print("=== Python Code ===================")
+    print(python_builder.build(inductives), flush=True)
+    #print("===================================")
+
+    """
     print()
     print()
-    print("=== Lean Code =====================")
+    print("=== Old Lean Code =====================")
 
     print(make_lean_boilerplate(inductives))
 
@@ -318,12 +790,12 @@ def main():
 
     print()
     print()
-    print("=== Python Code =====================")
+    print("=== Old Python Code =====================")
 
     print(make_python_boilerplate(inductives))
 
     print("=====================================")
-
+    """
 
 if __name__ == '__main__':
     main()

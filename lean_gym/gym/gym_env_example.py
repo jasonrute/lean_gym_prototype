@@ -20,15 +20,15 @@ class LeanEnvExample:
     This is an example gym which follows an interface similar
     to open AI's gym.
     """
-    def __init__(self, goal: Optional[str], use_in_reverse=False):
+    def __init__(self, goal: Optional[str], deploy_as_app=False):
         """
         :param goal:  The goal to solve.  Enter as a string of Lean code, e.g. "forall p q : Prop, p -> p \\/ q".
-        :param use_in_reverse: This environment can be used in reverse.  The environment will communicate
+        :param deploy_as_app: This environment can be used in reverse.  The environment will communicate
         with sys.stdin and sys.stdout, allowing lean to call the agent's python file as a process to provide guidance.
         """
 
         # this gym is a wrapper around a custom Lean server process.
-        if use_in_reverse:
+        if deploy_as_app:
             self.server = LeanServer(None)
         else:
             lean_file_path = Path(__file__).parent / "../../src/examples/parser_entry.lean"
